@@ -7,40 +7,41 @@ jobs:
     strategy:
       matrix:
         include:
-          - { runner: ubuntu-latest, os: linux,   arch: amd64, env:  CGO_ENABLED=0 }
+          - { name: go-rofi-bluetooth-menu, runner: ubuntu-latest, os: linux,   arch: amd64, env:  CGO_ENABLED=0 }
     steps:
-      - name: Set up Git repository
-        uses: actions/checkout@v3
-      - name: Build
-        uses: hashicorp/actions-go-build@main
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          product_name: go-rofi-bluetooth-menu
-          product_version: 1.2.3
-          go_version: 1.23
-          os: ${{ matrix.os }}
-          arch: ${{ matrix.arch }}
-          reproducible: nope
-          instructions: |-
-            ${{ matrix.env }} \
-              go build \
-                -o "$BIN_PATH" \
-                -trimpath \
-                -buildvcs=true \
-                "
+          go-version-file: 'go.mod'
+      - name: Build
+        env:
+          NAME: "${{ matrix.name }}"
+          GOOS: "${{ matrix.os }}"
+          GOARCH: "${{ matrix.arch }}"
+          CGO_ENABLED: "0"
+        run: |
+          go build \
+            -trimpath \
+            -buildvcs=true \
+            -o dist/$PROJECT-$GOOS-$GOARCH
       - name: Upload the built artifact
         uses: actions/upload-artifact@v4
         with:
           name: go-rofi-bluetooth-menu
-          path: "$BIN_PATH"
+          path: "dist/"
       - name: set release date
         run: |
           echo "RELEASE_DATE=$(date +'%Y-%m-%d-%H-%M-%S')" >> $GITHUB_ENV
-      - uses: "marvinpinto/action-automatic-releases@latest"
+      - name: create new release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        env:
+          NAME: "${{ matrix.name }}"
+          GOOS: "${{ matrix.os }}"
+          GOARCH: "${{ matrix.arch }}"
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           automatic_release_tag: "latest"
           prerelease: false
-          title: "[${{ env.RELEASE_DATE }}]"
+          title: "$PROJECT-$GOOS-$GOARCH [${{ env.RELEASE_DATE }}]"
           files: |
-            thesis_mclb.pdf
-
+            dist/$PROJECT-$GOOS-$GOARCH
