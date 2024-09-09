@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -117,6 +118,17 @@ func createDeviceMap(connected, paired []string) map[string]Device {
 }
 
 func main() {
+
+	versionFlag := flag.Bool("version", false, "Print the version information")
+	vFlag := flag.Bool("v", false, "Print the version information (shorthand)")
+
+	flag.Parse()
+
+	if *versionFlag || *vFlag {
+		PrintVersion()
+		os.Exit(0)
+	}
+
 	tempFile, err := os.CreateTemp("", "bluetooth")
 	if err != nil {
 		fmt.Println("Error creating temp file:", err)
