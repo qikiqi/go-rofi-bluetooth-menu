@@ -19,7 +19,7 @@ jobs:
           go_version: 1.23
           os: ${{ matrix.os }}
           arch: ${{ matrix.arch }}
-          reproducible: false
+          reproducible: nope
           instructions: |-
             ${{ matrix.env }} \
               go build \
