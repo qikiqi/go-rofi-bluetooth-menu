@@ -2,7 +2,7 @@ name: Matrix Build Go Binaries
 on:
   workflow_call:
 jobs:
-  example:
+  build-go:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
