@@ -1,5 +1,8 @@
 name: Master Push
 
+permissions:
+ contents: write
+
 on:
   push:
     branches:
