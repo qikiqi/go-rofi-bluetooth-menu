@@ -35,4 +35,4 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: dist/${{ matrix.name }}-${{ matrix.os }}-${{ matrix.arch }}
           asset_name: ${{ matrix.name }}-${{ matrix.os }}-${{ matrix.arch }}
-          tag: "${{ steps.semrel.outputs.version }}"
+          tag: "v${{ steps.semrel.outputs.version }}"
