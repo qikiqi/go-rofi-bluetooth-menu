@@ -23,7 +23,7 @@ jobs:
           go build \
             -trimpath \
             -buildvcs=true \
-            -o $PROJECT-$GOOS-$GOARCH && ls -lah && ls -lah /tmp
+            -o dist/$NAME-$GOOS-$GOARCH
       - uses: go-semantic-release/action@v1
         id: semrel
         with:
@@ -32,6 +32,6 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ matrix.name }}-${{ matrix.os }}-${{ matrix.arch }}
+          file: dist/${{ matrix.name }}-${{ matrix.os }}-${{ matrix.arch }}
           asset_name: ${{ matrix.name }}-${{ matrix.os }}-${{ matrix.arch }}
           tag: ${{ github.ref }}
