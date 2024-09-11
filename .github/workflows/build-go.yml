@@ -23,7 +23,7 @@ jobs:
           go build \
             -trimpath \
             -buildvcs=true \
-            -o $PROJECT-$GOOS-$GOARCH
+            -o $PROJECT-$GOOS-$GOARCH && ls -lah && ls -lah /tmp
       - uses: go-semantic-release/action@v1
         id: semrel
         with:
