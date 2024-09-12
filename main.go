@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"sort"
@@ -24,15 +25,21 @@ func getSymbol(status bool) string {
 	return "󰂲"
 }
 
+func runRofi(tempFileName string) (string, error) {
+	cmd := exec.Command("rofi", "-dmenu", "-input", tempFileName, "-i", "-p", "Bluetooth", "-keep-right")
+	output, err := cmd.Output()
+	return string(output), err
+}
+
 // containsKey checks if the input string contains any key from the map
 func validMAC(input string, devices map[string]Device) bool {
 	for key := range devices {
 		if strings.Contains(input, key) {
-			fmt.Println("Found!")
+			log.Println("Found MAC")
 			return true
 		}
 	}
-	fmt.Println("Not Found")
+	log.Println("MAC not found")
 	return false
 }
 
@@ -42,7 +49,7 @@ func runBluetoothctl(command string) string {
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
-		fmt.Println("Error running bluetoothctl:", err)
+		log.Println("Error running bluetoothctl:", err)
 	}
 	return out.String()
 }
@@ -74,14 +81,14 @@ func getConnectAction(input string) string {
 func writeRofiTempfile(tempFile *os.File, allDevicesSorted []Device) {
 	// Print the map entries
 	for _, device := range allDevicesSorted {
-		fmt.Printf("%s: %s\n", getSymbol(device.Connected), device.Name)
+		log.Printf("%s: %s\n", getSymbol(device.Connected), device.Name)
 		tempFile.WriteString(fmt.Sprintf("%s: %s\n", getSymbol(device.Connected), device.Name))
 	}
 }
 
 func connectDevice(mac string, disconnect string) {
 	runBluetoothctl("power on")
-	fmt.Printf("%sconnect %s", disconnect, mac)
+	log.Printf("%sconnect %s", disconnect, mac)
 	runBluetoothctl(fmt.Sprintf("%sconnect %s", disconnect, mac))
 }
 
@@ -118,7 +125,6 @@ func createDeviceMap(connected, paired []string) map[string]Device {
 }
 
 func main() {
-
 	versionFlag := flag.Bool("version", false, "Print the version information")
 	vFlag := flag.Bool("v", false, "Print the version information (shorthand)")
 
@@ -131,7 +137,7 @@ func main() {
 
 	tempFile, err := os.CreateTemp("", "bluetooth")
 	if err != nil {
-		fmt.Println("Error creating temp file:", err)
+		log.Fatalf("Error creating temp file: %v", err)
 		return
 	}
 	defer os.Remove(tempFile.Name())
@@ -139,23 +145,22 @@ func main() {
 	connected := sanitizeDevice(runBluetoothctl("devices Connected"))
 	paired := sanitizeDevice(runBluetoothctl("devices"))
 
-	// Create the device map
 	allDevices := createDeviceMap(connected, paired)
 	allDevicesSorted := sortDeviceMapByConnected(allDevices)
 
 	writeRofiTempfile(tempFile, allDevicesSorted)
 
-	cmd := exec.Command("rofi", "-dmenu", "-input", tempFile.Name(), "-i", "-p", "Bluetooth", "-keep-right")
-	userInput, err := cmd.Output()
+	userInput, err := runRofi(tempFile.Name())
 	if err != nil {
-		fmt.Println("Error running rofi:", err)
-		fmt.Println("userInput:", string(userInput))
+		log.Fatalf("Error running rofi: %v", err)
+		log.Fatalf("userInput: %s", userInput)
 		return
 	}
 
-	if !validMAC(string(userInput), allDevices) {
-		fmt.Println("Not valid userInput (not found in paired devices MAC)")
+	if !validMAC(userInput, allDevices) {
+		log.Println("Invalid user input (not found in paired devices MAC)")
 		return
 	}
-	connectDevice(getMacFromUserInput(string(userInput)), getConnectAction(string(userInput)))
+
+	connectDevice(getMacFromUserInput(userInput), getConnectAction(userInput))
 }
