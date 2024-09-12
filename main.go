@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 // Define the struct
@@ -35,11 +37,11 @@ func runRofi(tempFileName string) (string, error) {
 func validMAC(input string, devices map[string]Device) bool {
 	for key := range devices {
 		if strings.Contains(input, key) {
-			log.Println("Found MAC")
+			log.Error().Msg("Found MAC")
 			return true
 		}
 	}
-	log.Println("MAC not found")
+	log.Error().Msg("MAC not found")
 	return false
 }
 
@@ -49,7 +51,7 @@ func runBluetoothctl(command string) string {
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
-		log.Println("Error running bluetoothctl:", err)
+		log.Error().Msgf("Error running bluetoothctl:", err)
 	}
 	return out.String()
 }
@@ -81,14 +83,14 @@ func getConnectAction(input string) string {
 func writeRofiTempfile(tempFile *os.File, allDevicesSorted []Device) {
 	// Print the map entries
 	for _, device := range allDevicesSorted {
-		log.Printf("%s: %s\n", getSymbol(device.Connected), device.Name)
+		log.Info().Msgf("%s: %s", getSymbol(device.Connected), device.Name)
 		tempFile.WriteString(fmt.Sprintf("%s: %s\n", getSymbol(device.Connected), device.Name))
 	}
 }
 
 func connectDevice(mac string, disconnect string) {
 	runBluetoothctl("power on")
-	log.Printf("%sconnect %s", disconnect, mac)
+	log.Error().Msgf("%sconnect %s", disconnect, mac)
 	runBluetoothctl(fmt.Sprintf("%sconnect %s", disconnect, mac))
 }
 
@@ -125,10 +127,24 @@ func createDeviceMap(connected, paired []string) map[string]Device {
 }
 
 func main() {
+	// Define a flag for the log level
+	logLevel := flag.String("loglevel", "info", "set log level: debug, info, warn, error")
 	versionFlag := flag.Bool("version", false, "Print the version information")
 	vFlag := flag.Bool("v", false, "Print the version information (shorthand)")
+	benchmarkFlag := flag.Bool("benchmark", false, "Launch in benchmark mode")
 
 	flag.Parse()
+
+	// Convert the log level string to a zerolog.Level
+	level, err := zerolog.ParseLevel(strings.ToLower(*logLevel))
+	if err != nil {
+		log.Fatal().Err(err).Msg("Invalid log level")
+	}
+
+	// Set the global log level
+	zerolog.SetGlobalLevel(level)
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
 	if *versionFlag || *vFlag {
 		PrintVersion()
@@ -137,7 +153,9 @@ func main() {
 
 	tempFile, err := os.CreateTemp("", "bluetooth")
 	if err != nil {
-		log.Fatalf("Error creating temp file: %v", err)
+		log.Fatal().
+			Err(err).
+			Msg("Can't create tempfile")
 		return
 	}
 	defer os.Remove(tempFile.Name())
@@ -150,15 +168,20 @@ func main() {
 
 	writeRofiTempfile(tempFile, allDevicesSorted)
 
+	if *benchmarkFlag {
+		log.Info().Msg("Benchamrk run finished!")
+		os.Exit(0)
+	}
+
 	userInput, err := runRofi(tempFile.Name())
 	if err != nil {
-		log.Fatalf("Error running rofi: %v", err)
-		log.Fatalf("userInput: %s", userInput)
+		log.Error().Msgf("Error running rofi: %v", err)
+		log.Error().Msgf("userInput: %s", userInput)
 		return
 	}
 
 	if !validMAC(userInput, allDevices) {
-		log.Println("Invalid user input (not found in paired devices MAC)")
+		log.Error().Msg("Invalid user input (not found in paired devices MAC)")
 		return
 	}
 
