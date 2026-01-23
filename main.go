@@ -46,7 +46,7 @@ func validMAC(input string, devices map[string]Device) bool {
 }
 
 func runBluetoothctl(command string) string {
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo -e \"%s\" | sudo bluetoothctl", command))
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo -e \"%s\" | bluetoothctl", command))
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
