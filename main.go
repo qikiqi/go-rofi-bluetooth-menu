@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/qikiqi/go-rofi-bluetooth-menu/internal/version"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -147,7 +148,7 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
 	if *versionFlag || *vFlag {
-		PrintVersion()
+		version.PrintVersion()
 		os.Exit(0)
 	}
 
