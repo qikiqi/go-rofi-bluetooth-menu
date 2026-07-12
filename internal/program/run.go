@@ -27,8 +27,11 @@ func Run(ctx context.Context) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
 	if *versionFlag || *vFlag {
-		version.PrintVersion()
-		os.Exit(0)
+		if err := version.Print(); err != nil {
+			slog.Error("version unavailable", "err", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	bt := bluetoothctlRunner{}

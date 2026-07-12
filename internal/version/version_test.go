@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
 
-// TestPrintVersion cannot run in parallel with other tests: it swaps out
-// the package-global os.Stdout for the duration of the call.
-func TestPrintVersion(t *testing.T) {
+// TestPrint cannot run in parallel with other tests: it swaps out the
+// package-global os.Stdout for the duration of the call.
+func TestPrint(t *testing.T) {
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -19,7 +20,9 @@ func TestPrintVersion(t *testing.T) {
 	os.Stdout = w
 	defer func() { os.Stdout = old }()
 
-	PrintVersion()
+	if err := Print(); err != nil {
+		t.Fatalf("Print() error = %v", err)
+	}
 
 	w.Close()
 	var buf bytes.Buffer
@@ -28,12 +31,9 @@ func TestPrintVersion(t *testing.T) {
 	}
 	out := buf.String()
 
-	// debug.ReadBuildInfo() succeeds for binaries built by the Go
-	// toolchain, which includes the `go test` binary itself, so the
-	// "no build info" branch isn't exercised here.
-	for _, want := range []string{"Build Info:", "Go Version:"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("PrintVersion() output = %q, want it to contain %q", out, want)
-		}
+	// The test binary is built by the Go toolchain, so build info is
+	// available and the Go version appears in the output.
+	if !strings.Contains(out, runtime.Version()) {
+		t.Errorf("Print() output = %q, want it to contain the Go version %q", out, runtime.Version())
 	}
 }
