@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os/exec"
-
-	"github.com/rs/zerolog/log"
 )
 
 // Bluetoothctl runs a command against the system bluetoothctl and returns its
@@ -24,15 +23,14 @@ func (bluetoothctlRunner) Run(ctx context.Context, command string) string {
 	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo -e \"%s\" | bluetoothctl", command))
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		log.Error().Msgf("Error running bluetoothctl: %v", err)
+	if err := cmd.Run(); err != nil {
+		slog.Error("bluetoothctl failed", "command", command, "err", err)
 	}
 	return out.String()
 }
 
 func connectDevice(ctx context.Context, bt Bluetoothctl, mac string, disconnect string) {
 	bt.Run(ctx, "power on")
-	log.Error().Msgf("%sconnect %s", disconnect, mac)
+	slog.Debug("bluetoothctl action", "cmd", fmt.Sprintf("%sconnect %s", disconnect, mac))
 	bt.Run(ctx, fmt.Sprintf("%sconnect %s", disconnect, mac))
 }

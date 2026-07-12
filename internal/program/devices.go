@@ -3,22 +3,20 @@ package program
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
-
-	"github.com/rs/zerolog/log"
 )
 
-// containsKey checks if the input string contains any key from the map
 func validMAC(input string, devices map[string]Device) bool {
 	for key := range devices {
 		if strings.Contains(input, key) {
-			log.Error().Msg("Found MAC")
+			slog.Debug("matched device in selection", "selection", input)
 			return true
 		}
 	}
-	log.Error().Msg("MAC not found")
+	slog.Debug("no device matched selection", "selection", input)
 	return false
 }
 
@@ -49,7 +47,7 @@ func getConnectAction(input string) string {
 
 func writeRofiTempfile(tempFile *os.File, allDevicesSorted []Device) {
 	for _, device := range allDevicesSorted {
-		log.Info().Msgf("%s: %s", symbol(device.Connected), device.Name)
+		slog.Debug("menu entry", "symbol", symbol(device.Connected), "name", device.Name)
 		tempFile.WriteString(fmt.Sprintf("%s: %s\n", symbol(device.Connected), device.Name))
 	}
 }

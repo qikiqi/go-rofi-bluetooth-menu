@@ -1,18 +1,17 @@
 package program
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"reflect"
 	"testing"
-
-	"github.com/rs/zerolog"
 )
 
 func TestMain(m *testing.M) {
-	// Silence the global logger; several functions under test (validMAC,
-	// writeRofiTempfile) log unconditionally and would otherwise spam
-	// test output.
-	zerolog.SetGlobalLevel(zerolog.Disabled)
+	// Silence structured logging; several functions under test log
+	// unconditionally and would otherwise spam test output.
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	os.Exit(m.Run())
 }
 

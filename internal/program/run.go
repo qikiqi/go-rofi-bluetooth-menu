@@ -3,12 +3,12 @@ package program
 import (
 	"context"
 	"flag"
+	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/qikiqi/go-rofi-bluetooth-menu/internal/version"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 // Run executes the rofi Bluetooth menu.
@@ -20,14 +20,12 @@ func Run() {
 
 	flag.Parse()
 
-	level, err := zerolog.ParseLevel(strings.ToLower(*logLevel))
+	level, err := parseLogLevel(*logLevel)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Invalid log level")
+		slog.Error("invalid log level", "err", err)
+		os.Exit(1)
 	}
-
-	zerolog.SetGlobalLevel(level)
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
 	if *versionFlag || *vFlag {
 		version.PrintVersion()
@@ -40,10 +38,8 @@ func Run() {
 
 	tempFile, err := os.CreateTemp("", "bluetooth")
 	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("Can't create tempfile")
-		return
+		slog.Error("cannot create tempfile", "err", err)
+		os.Exit(1)
 	}
 	defer os.Remove(tempFile.Name())
 
@@ -56,21 +52,36 @@ func Run() {
 	writeRofiTempfile(tempFile, allDevicesSorted)
 
 	if *benchmarkFlag {
-		log.Info().Msg("Benchamrk run finished!")
+		slog.Info("benchmark run finished")
 		os.Exit(0)
 	}
 
 	userInput, err := menu.Prompt(ctx, tempFile.Name())
 	if err != nil {
-		log.Error().Msgf("Error running rofi: %v", err)
-		log.Error().Msgf("userInput: %s", userInput)
+		slog.Error("rofi failed", "err", err, "output", userInput)
 		return
 	}
 
 	if !validMAC(userInput, allDevices) {
-		log.Error().Msg("Invalid user input (not found in paired devices MAC)")
+		slog.Warn("selection not found among paired devices", "selection", userInput)
 		return
 	}
 
 	connectDevice(ctx, bt, getMacFromUserInput(userInput), getConnectAction(userInput))
+}
+
+// parseLogLevel maps a -loglevel string to a slog.Level.
+func parseLogLevel(s string) (slog.Level, error) {
+	switch strings.ToLower(s) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, fmt.Errorf("unknown log level %q", s)
+	}
 }
