@@ -1,12 +1,17 @@
 package program
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"log/slog"
 	"os/exec"
+	"strings"
+	"time"
 )
+
+// bluetoothctlTimeout bounds a single bluetoothctl invocation so a stalled
+// adapter cannot hang the menu indefinitely. Generous enough to cover a real
+// device connection, which can take several seconds.
+const bluetoothctlTimeout = 30 * time.Second
 
 // Bluetoothctl runs a command against the system bluetoothctl and returns its
 // output.
@@ -17,20 +22,25 @@ type Bluetoothctl interface {
 var _ Bluetoothctl = bluetoothctlRunner{}
 
 // bluetoothctlRunner is the Bluetoothctl backed by the real bluetoothctl binary.
+// The command is fed on stdin, exactly as an interactive session would receive
+// it; bluetoothctl runs it and exits on EOF.
 type bluetoothctlRunner struct{}
 
 func (bluetoothctlRunner) Run(ctx context.Context, command string) string {
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo -e \"%s\" | bluetoothctl", command))
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	ctx, cancel := context.WithTimeout(ctx, bluetoothctlTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bluetoothctl")
+	cmd.Stdin = strings.NewReader(command + "\n")
+	out, err := cmd.Output()
+	if err != nil {
 		slog.Error("bluetoothctl failed", "command", command, "err", err)
 	}
-	return out.String()
+	return string(out)
 }
 
 func connectDevice(ctx context.Context, bt Bluetoothctl, mac string, disconnect string) {
 	bt.Run(ctx, "power on")
-	slog.Debug("bluetoothctl action", "cmd", fmt.Sprintf("%sconnect %s", disconnect, mac))
-	bt.Run(ctx, fmt.Sprintf("%sconnect %s", disconnect, mac))
+	slog.Debug("bluetoothctl action", "cmd", disconnect+"connect "+mac)
+	bt.Run(ctx, disconnect+"connect "+mac)
 }

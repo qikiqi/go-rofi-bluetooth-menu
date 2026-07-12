@@ -12,7 +12,7 @@ import (
 )
 
 // Run executes the rofi Bluetooth menu.
-func Run() {
+func Run(ctx context.Context) {
 	logLevel := flag.String("loglevel", "info", "set log level: debug, info, warn, error")
 	versionFlag := flag.Bool("version", false, "Print the version information")
 	vFlag := flag.Bool("v", false, "Print the version information (shorthand)")
@@ -32,7 +32,6 @@ func Run() {
 		os.Exit(0)
 	}
 
-	ctx := context.Background()
 	bt := bluetoothctlRunner{}
 	menu := rofiMenu{}
 

@@ -4,17 +4,16 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// These tests shell out to real subprocesses, but every external binary
-// (bash aside) is a hermetic stub script written to a temp directory and
-// prepended to PATH, so none of them touch real Bluetooth hardware or a
-// display server. That keeps them fast and deterministic enough to run as
-// regular unit tests rather than behind an integration build tag.
+// These tests shell out to real subprocesses, but every external binary the
+// program invokes (bluetoothctl, rofi) is a hermetic stub script written to a
+// temp directory and prepended to PATH, so none of them touch real Bluetooth
+// hardware or a display server. That keeps them fast and deterministic enough
+// to run as regular unit tests rather than behind an integration build tag.
 //
 // None of these tests can use t.Parallel(): t.Setenv panics if called from
 // a parallel test.
@@ -45,24 +44,14 @@ func TestRunBluetoothctl(t *testing.T) {
 }
 
 func TestRunBluetoothctl_MissingBinary(t *testing.T) {
-	realBash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash not available in test environment")
-	}
-
-	// Restrict PATH to a directory containing only a symlink to the real
-	// bash, so bash itself resolves but the bluetoothctl it tries to
-	// invoke internally does not.
-	dir := t.TempDir()
-	if err := os.Symlink(realBash, filepath.Join(dir, "bash")); err != nil {
-		t.Fatalf("os.Symlink() error = %v", err)
-	}
-	t.Setenv("PATH", dir)
+	// PATH points at an empty directory, so bluetoothctl cannot be found;
+	// Run logs the error and returns empty output.
+	t.Setenv("PATH", t.TempDir())
 
 	got := bluetoothctlRunner{}.Run(context.Background(), "devices")
 
 	if got != "" {
-		t.Errorf("runBluetoothctl() = %q, want empty output when bluetoothctl is missing", got)
+		t.Errorf("Run() = %q, want empty output when bluetoothctl is missing", got)
 	}
 }
 

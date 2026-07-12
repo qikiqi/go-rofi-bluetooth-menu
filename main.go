@@ -1,7 +1,16 @@
 package main
 
-import "github.com/qikiqi/go-rofi-bluetooth-menu/internal/program"
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/qikiqi/go-rofi-bluetooth-menu/internal/program"
+)
 
 func main() {
-	program.Run()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	program.Run(ctx)
 }
