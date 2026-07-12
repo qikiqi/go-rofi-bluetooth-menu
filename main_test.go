@@ -360,3 +360,42 @@ func TestWriteRofiTempfile(t *testing.T) {
 		})
 	}
 }
+
+// TestUserSelectionDerivesConnectCommand characterizes the full mapping that
+// main() relies on: from a rofi selection line to the (MAC, action) pair fed
+// into connectDevice. It composes getMacFromUserInput + getConnectAction — the
+// two functions the Device-model split will fold into a single by-MAC lookup —
+// and locks their combined contract so the split can be proven behavior-
+// preserving. The asserted values must survive the refactor unchanged.
+func TestUserSelectionDerivesConnectCommand(t *testing.T) {
+	tests := []struct {
+		name           string
+		selection      string
+		wantMAC        string
+		wantDisconnect string // "dis" => disconnect, "" => connect
+	}{
+		{
+			name:           "connected device selected requests disconnect",
+			selection:      "󰂱: AA:BB:CC:DD:EE:FF My Headphones",
+			wantMAC:        "AA:BB:CC:DD:EE:FF",
+			wantDisconnect: "dis",
+		},
+		{
+			name:           "disconnected device selected requests connect",
+			selection:      "󰂲: 11:22:33:44:55:66 Other Device",
+			wantMAC:        "11:22:33:44:55:66",
+			wantDisconnect: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := getMacFromUserInput(tt.selection); got != tt.wantMAC {
+				t.Errorf("getMacFromUserInput(%q) = %q, want %q", tt.selection, got, tt.wantMAC)
+			}
+			if got := getConnectAction(tt.selection); got != tt.wantDisconnect {
+				t.Errorf("getConnectAction(%q) = %q, want %q", tt.selection, got, tt.wantDisconnect)
+			}
+		})
+	}
+}
