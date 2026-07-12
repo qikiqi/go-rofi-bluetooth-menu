@@ -9,73 +9,102 @@ import (
 	"strings"
 )
 
-func validMAC(input string, devices map[string]Device) bool {
-	for key := range devices {
-		if strings.Contains(input, key) {
-			slog.Debug("matched device in selection", "selection", input)
-			return true
-		}
-	}
-	slog.Debug("no device matched selection", "selection", input)
-	return false
-}
-
-func parseDevices(input string) []string {
-	var devices []string
+// parseDevices extracts devices from `bluetoothctl devices`-style output. Each
+// device line has the form "Device <MAC> <name...>"; lines that do not start
+// with "Device " or that carry no MAC field are skipped. Connected is left
+// false — mergeDevices assigns it.
+func parseDevices(input string) []Device {
+	var devices []Device
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.Contains(line, "Device") {
-			line = strings.Replace(line, "Device ", "", 1)
-			devices = append(devices, line)
+		if !strings.HasPrefix(line, "Device ") {
+			continue
 		}
+		mac, name, ok := splitMACName(strings.TrimPrefix(line, "Device "))
+		if !ok {
+			continue
+		}
+		devices = append(devices, Device{MAC: mac, Name: name})
 	}
 	return devices
 }
 
-func getMacFromUserInput(input string) string {
-	return strings.Fields(input)[1]
+// splitMACName splits "<MAC> <name...>" into its MAC and (possibly empty) name.
+// ok is false when no MAC is present.
+func splitMACName(s string) (mac, name string, ok bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", "", false
+	}
+	parts := strings.SplitN(s, " ", 2)
+	mac = parts[0]
+	if len(parts) == 2 {
+		name = strings.TrimSpace(parts[1])
+	}
+	return mac, name, true
 }
 
-func getConnectAction(input string) string {
-	if strings.Contains(string(input), "󰂱") {
-		return "dis"
-	} else {
-		return ""
+// mergeDevices combines connected and paired devices into a MAC-keyed map,
+// marking devices from the connected list as Connected. A device present in
+// both keeps its connected status.
+func mergeDevices(connected, paired []Device) map[string]Device {
+	all := make(map[string]Device)
+	for _, d := range connected {
+		d.Connected = true
+		all[d.MAC] = d
 	}
-}
-
-func writeRofiTempfile(tempFile *os.File, allDevicesSorted []Device) {
-	for _, device := range allDevicesSorted {
-		slog.Debug("menu entry", "symbol", symbol(device.Connected), "name", device.Name)
-		tempFile.WriteString(fmt.Sprintf("%s: %s\n", symbol(device.Connected), device.Name))
-	}
-}
-
-func sortByConnected(allDevices map[string]Device) []Device {
-	deviceList := make([]Device, 0, len(allDevices))
-	for _, device := range allDevices {
-		deviceList = append(deviceList, device)
-	}
-
-	sort.Slice(deviceList, func(i, j int) bool {
-		return deviceList[i].Connected && !deviceList[j].Connected
-	})
-	return deviceList
-}
-
-func mergeDevices(connected, paired []string) map[string]Device {
-	allDevices := make(map[string]Device)
-
-	for _, mac := range connected {
-		allDevices[mac] = Device{Name: mac, Connected: true}
-	}
-
-	for _, mac := range paired {
-		if _, exists := allDevices[mac]; !exists {
-			allDevices[mac] = Device{Name: mac, Connected: false}
+	for _, d := range paired {
+		if _, exists := all[d.MAC]; !exists {
+			d.Connected = false
+			all[d.MAC] = d
 		}
 	}
+	return all
+}
 
-	return allDevices
+func sortByConnected(devices map[string]Device) []Device {
+	list := make([]Device, 0, len(devices))
+	for _, d := range devices {
+		list = append(list, d)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Connected && !list[j].Connected
+	})
+	return list
+}
+
+// writeRofiTempfile renders one menu line per device as "<symbol>: <MAC> <name>"
+// (the name is omitted, with no trailing space, when empty).
+func writeRofiTempfile(tempFile *os.File, devices []Device) {
+	for _, d := range devices {
+		entry := strings.TrimSpace(d.MAC + " " + d.Name)
+		slog.Debug("menu entry", "symbol", symbol(d.Connected), "mac", d.MAC, "name", d.Name)
+		fmt.Fprintf(tempFile, "%s: %s\n", symbol(d.Connected), entry)
+	}
+}
+
+// selectedMAC extracts the MAC from a rendered menu selection of the form
+// "<symbol>: <MAC> <name>", returning an error instead of panicking when the
+// selection has no MAC field.
+func selectedMAC(selection string) (string, error) {
+	fields := strings.Fields(selection)
+	if len(fields) < 2 {
+		return "", fmt.Errorf("selection %q has no MAC field", selection)
+	}
+	return fields[1], nil
+}
+
+// resolveSelection maps a menu selection back to the Device it refers to,
+// looking it up by the MAC embedded in the selection line.
+func resolveSelection(selection string, devices map[string]Device) (Device, error) {
+	mac, err := selectedMAC(selection)
+	if err != nil {
+		return Device{}, err
+	}
+	device, ok := devices[mac]
+	if !ok {
+		return Device{}, fmt.Errorf("selection %q (mac %q) not among known devices", selection, mac)
+	}
+	return device, nil
 }

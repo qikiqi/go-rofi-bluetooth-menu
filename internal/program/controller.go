@@ -39,8 +39,14 @@ func (bluetoothctlRunner) Run(ctx context.Context, command string) string {
 	return string(out)
 }
 
-func connectDevice(ctx context.Context, bt Bluetoothctl, mac string, disconnect string) {
+// connectDevice powers the adapter on and toggles the device: a currently
+// connected device is disconnected, otherwise it is connected.
+func connectDevice(ctx context.Context, bt Bluetoothctl, device Device) {
 	bt.Run(ctx, "power on")
-	slog.Debug("bluetoothctl action", "cmd", disconnect+"connect "+mac)
-	bt.Run(ctx, disconnect+"connect "+mac)
+	action := "connect"
+	if device.Connected {
+		action = "disconnect"
+	}
+	slog.Debug("bluetoothctl action", "cmd", action+" "+device.MAC)
+	bt.Run(ctx, action+" "+device.MAC)
 }

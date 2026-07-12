@@ -61,12 +61,13 @@ func Run(ctx context.Context) {
 		return
 	}
 
-	if !validMAC(userInput, allDevices) {
-		slog.Warn("selection not found among paired devices", "selection", userInput)
+	device, err := resolveSelection(userInput, allDevices)
+	if err != nil {
+		slog.Warn("could not resolve selection", "err", err, "selection", userInput)
 		return
 	}
 
-	connectDevice(ctx, bt, getMacFromUserInput(userInput), getConnectAction(userInput))
+	connectDevice(ctx, bt, device)
 }
 
 // parseLogLevel maps a -loglevel string to a slog.Level.

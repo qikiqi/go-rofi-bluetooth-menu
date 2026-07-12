@@ -1,6 +1,7 @@
 package program
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"os"
@@ -13,6 +14,17 @@ func TestMain(m *testing.M) {
 	// unconditionally and would otherwise spam test output.
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	os.Exit(m.Run())
+}
+
+// fakeBluetoothctl records the commands it is asked to run.
+type fakeBluetoothctl struct {
+	commands []string
+	output   string
+}
+
+func (f *fakeBluetoothctl) Run(_ context.Context, command string) string {
+	f.commands = append(f.commands, command)
+	return f.output
 }
 
 func TestSymbol(t *testing.T) {
@@ -38,22 +50,27 @@ func TestParseDevices(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
-		want  []string
+		want  []Device
 	}{
 		{
 			name:  "single device line",
 			input: "Device AA:BB:CC:DD:EE:FF My Headphones",
-			want:  []string{"AA:BB:CC:DD:EE:FF My Headphones"},
+			want:  []Device{{MAC: "AA:BB:CC:DD:EE:FF", Name: "My Headphones"}},
 		},
 		{
 			name: "multiple device lines with controller noise",
 			input: "Controller 00:11:22:33:44:55 MyController [default]\n" +
 				"Device AA:BB:CC:DD:EE:FF My Headphones\n" +
 				"Device 11:22:33:44:55:66 Other Device\n",
-			want: []string{
-				"AA:BB:CC:DD:EE:FF My Headphones",
-				"11:22:33:44:55:66 Other Device",
+			want: []Device{
+				{MAC: "AA:BB:CC:DD:EE:FF", Name: "My Headphones"},
+				{MAC: "11:22:33:44:55:66", Name: "Other Device"},
 			},
+		},
+		{
+			name:  "device without a name",
+			input: "Device AA:BB:CC:DD:EE:FF",
+			want:  []Device{{MAC: "AA:BB:CC:DD:EE:FF", Name: ""}},
 		},
 		{
 			name:  "no matching lines",
@@ -66,13 +83,12 @@ func TestParseDevices(t *testing.T) {
 			want:  nil,
 		},
 		{
-			// "Device" substring is matched even without the trailing
-			// space that the subsequent Replace requires, so the line
-			// is kept but left un-stripped. Characterizes existing
-			// behavior rather than asserting it is desirable.
-			name:  "Device substring without trailing space is left unstripped",
+			// Only lines that actually start with "Device " are devices; a
+			// stray "Device" substring elsewhere is not a device line. This
+			// corrects the old Contains-based parse, which kept such lines.
+			name:  "Device substring midline is not a device",
 			input: "SomeDeviceX line without a space after Device",
-			want:  []string{"SomeDeviceX line without a space after Device"},
+			want:  nil,
 		},
 	}
 	for _, tt := range tests {
@@ -86,7 +102,7 @@ func TestParseDevices(t *testing.T) {
 	}
 }
 
-func TestGetMacFromUserInput(t *testing.T) {
+func TestSelectedMAC(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
@@ -111,82 +127,97 @@ func TestGetMacFromUserInput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := getMacFromUserInput(tt.input); got != tt.want {
-				t.Errorf("getMacFromUserInput(%q) = %q, want %q", tt.input, got, tt.want)
+			got, err := selectedMAC(tt.input)
+			if err != nil {
+				t.Fatalf("selectedMAC(%q) error = %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Errorf("selectedMAC(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestGetMacFromUserInput_PanicsOnSingleField characterizes a real
-// limitation: getMacFromUserInput indexes strings.Fields(input)[1]
-// unchecked, so any input with fewer than two whitespace-separated
-// fields panics instead of returning an error.
-func TestGetMacFromUserInput_PanicsOnSingleField(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for input with fewer than 2 fields, got none")
-		}
-	}()
-	getMacFromUserInput("onlyoneword")
-}
-
-func TestGetConnectAction(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{name: "currently connected requests disconnect", input: "󰂱: AA:BB:CC:DD:EE:FF Name", want: "dis"},
-		{name: "currently disconnected requests connect", input: "󰂲: AA:BB:CC:DD:EE:FF Name", want: ""},
-		{name: "empty input", input: "", want: ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := getConnectAction(tt.input); got != tt.want {
-				t.Errorf("getConnectAction(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
+// TestSelectedMAC_ErrorsOnSingleField pins the deliberate fix for the old
+// strings.Fields(input)[1] panic: a selection with fewer than two fields now
+// returns an error instead of crashing.
+func TestSelectedMAC_ErrorsOnSingleField(t *testing.T) {
+	t.Parallel()
+	if _, err := selectedMAC("onlyoneword"); err == nil {
+		t.Fatal("expected error for input with fewer than 2 fields, got nil")
 	}
 }
 
-func TestValidMAC(t *testing.T) {
+func TestResolveSelection(t *testing.T) {
 	devices := map[string]Device{
-		"AA:BB:CC:DD:EE:FF My Headphones": {Name: "AA:BB:CC:DD:EE:FF My Headphones", Connected: true},
-		"11:22:33:44:55:66 Other Device":  {Name: "11:22:33:44:55:66 Other Device", Connected: false},
+		"AA:BB:CC:DD:EE:FF": {MAC: "AA:BB:CC:DD:EE:FF", Name: "My Headphones", Connected: true},
+		"11:22:33:44:55:66": {MAC: "11:22:33:44:55:66", Name: "Other Device"},
 	}
 
+	t.Run("resolves known device by MAC", func(t *testing.T) {
+		t.Parallel()
+		got, err := resolveSelection("󰂱: AA:BB:CC:DD:EE:FF My Headphones", devices)
+		if err != nil {
+			t.Fatalf("resolveSelection() error = %v", err)
+		}
+		if want := devices["AA:BB:CC:DD:EE:FF"]; got != want {
+			t.Errorf("resolveSelection() = %+v, want %+v", got, want)
+		}
+	})
+
+	errorCases := []struct {
+		name      string
+		selection string
+	}{
+		{name: "no MAC field", selection: "onlyoneword"},
+		{name: "unknown MAC", selection: "󰂲: 99:88:77:66:55:44 Unknown"},
+		{name: "empty selection", selection: ""},
+	}
+	for _, tt := range errorCases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := resolveSelection(tt.selection, devices); err == nil {
+				t.Errorf("resolveSelection(%q) = nil error, want error", tt.selection)
+			}
+		})
+	}
+}
+
+// TestSelectionIssuesConnectCommand is the end-to-end characterization the
+// Device-model split had to preserve: a given menu selection must still produce
+// exactly the same bluetoothctl commands as before the split.
+func TestSelectionIssuesConnectCommand(t *testing.T) {
+	devices := map[string]Device{
+		"AA:BB:CC:DD:EE:FF": {MAC: "AA:BB:CC:DD:EE:FF", Name: "My Headphones", Connected: true},
+		"11:22:33:44:55:66": {MAC: "11:22:33:44:55:66", Name: "Other Device", Connected: false},
+	}
 	tests := []struct {
-		name    string
-		input   string
-		devices map[string]Device
-		want    bool
+		name      string
+		selection string
+		wantCmds  []string
 	}{
 		{
-			name:    "matching device",
-			input:   "󰂱: AA:BB:CC:DD:EE:FF My Headphones",
-			devices: devices,
-			want:    true,
+			name:      "connected device selected requests disconnect",
+			selection: "󰂱: AA:BB:CC:DD:EE:FF My Headphones",
+			wantCmds:  []string{"power on", "disconnect AA:BB:CC:DD:EE:FF"},
 		},
 		{
-			name:    "no matching device",
-			input:   "󰂲: 99:88:77:66:55:44 Unknown",
-			devices: devices,
-			want:    false,
-		},
-		{
-			name:    "empty device map",
-			input:   "anything",
-			devices: map[string]Device{},
-			want:    false,
+			name:      "disconnected device selected requests connect",
+			selection: "󰂲: 11:22:33:44:55:66 Other Device",
+			wantCmds:  []string{"power on", "connect 11:22:33:44:55:66"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := validMAC(tt.input, tt.devices); got != tt.want {
-				t.Errorf("validMAC(%q, devices) = %v, want %v", tt.input, got, tt.want)
+			device, err := resolveSelection(tt.selection, devices)
+			if err != nil {
+				t.Fatalf("resolveSelection(%q) error = %v", tt.selection, err)
+			}
+			bt := &fakeBluetoothctl{}
+			connectDevice(context.Background(), bt, device)
+			if !reflect.DeepEqual(bt.commands, tt.wantCmds) {
+				t.Errorf("connectDevice issued %v, want %v", bt.commands, tt.wantCmds)
 			}
 		})
 	}
@@ -204,24 +235,24 @@ func TestSortByConnected(t *testing.T) {
 		{
 			name: "all connected",
 			devices: map[string]Device{
-				"a": {Name: "a", Connected: true},
-				"b": {Name: "b", Connected: true},
+				"a": {MAC: "a", Connected: true},
+				"b": {MAC: "b", Connected: true},
 			},
 		},
 		{
 			name: "all disconnected",
 			devices: map[string]Device{
-				"a": {Name: "a", Connected: false},
-				"b": {Name: "b", Connected: false},
+				"a": {MAC: "a", Connected: false},
+				"b": {MAC: "b", Connected: false},
 			},
 		},
 		{
 			name: "mixed connected and disconnected",
 			devices: map[string]Device{
-				"a": {Name: "a", Connected: true},
-				"b": {Name: "b", Connected: false},
-				"c": {Name: "c", Connected: true},
-				"d": {Name: "d", Connected: false},
+				"a": {MAC: "a", Connected: true},
+				"b": {MAC: "b", Connected: false},
+				"c": {MAC: "c", Connected: true},
+				"d": {MAC: "d", Connected: false},
 			},
 		},
 	}
@@ -243,17 +274,17 @@ func TestSortByConnected(t *testing.T) {
 				if !d.Connected {
 					seenDisconnected = true
 				} else if seenDisconnected {
-					t.Fatalf("connected device %q found after a disconnected device in %v", d.Name, got)
+					t.Fatalf("connected device %q found after a disconnected device in %v", d.MAC, got)
 				}
 			}
 
 			gotSet := make(map[string]Device, len(got))
 			for _, d := range got {
-				gotSet[d.Name] = d
+				gotSet[d.MAC] = d
 			}
-			for name, want := range tt.devices {
-				if got, ok := gotSet[name]; !ok || got != want {
-					t.Errorf("device %q missing or altered in sorted output: got %+v, want %+v", name, got, want)
+			for mac, want := range tt.devices {
+				if got, ok := gotSet[mac]; !ok || got != want {
+					t.Errorf("device %q missing or altered in sorted output: got %+v, want %+v", mac, got, want)
 				}
 			}
 		})
@@ -263,8 +294,8 @@ func TestSortByConnected(t *testing.T) {
 func TestMergeDevices(t *testing.T) {
 	tests := []struct {
 		name      string
-		connected []string
-		paired    []string
+		connected []Device
+		paired    []Device
 		want      map[string]Device
 	}{
 		{
@@ -275,27 +306,30 @@ func TestMergeDevices(t *testing.T) {
 		},
 		{
 			name:      "connected only",
-			connected: []string{"AA:BB My Headphones"},
+			connected: []Device{{MAC: "AA:BB", Name: "My Headphones"}},
 			paired:    nil,
 			want: map[string]Device{
-				"AA:BB My Headphones": {Name: "AA:BB My Headphones", Connected: true},
+				"AA:BB": {MAC: "AA:BB", Name: "My Headphones", Connected: true},
 			},
 		},
 		{
 			name:      "paired only",
 			connected: nil,
-			paired:    []string{"11:22 Other Device"},
+			paired:    []Device{{MAC: "11:22", Name: "Other Device"}},
 			want: map[string]Device{
-				"11:22 Other Device": {Name: "11:22 Other Device", Connected: false},
+				"11:22": {MAC: "11:22", Name: "Other Device", Connected: false},
 			},
 		},
 		{
 			name:      "connected takes precedence over paired duplicate",
-			connected: []string{"AA:BB My Headphones"},
-			paired:    []string{"AA:BB My Headphones", "11:22 Other Device"},
+			connected: []Device{{MAC: "AA:BB", Name: "My Headphones"}},
+			paired: []Device{
+				{MAC: "AA:BB", Name: "My Headphones"},
+				{MAC: "11:22", Name: "Other Device"},
+			},
 			want: map[string]Device{
-				"AA:BB My Headphones": {Name: "AA:BB My Headphones", Connected: true},
-				"11:22 Other Device":  {Name: "11:22 Other Device", Connected: false},
+				"AA:BB": {MAC: "AA:BB", Name: "My Headphones", Connected: true},
+				"11:22": {MAC: "11:22", Name: "Other Device", Connected: false},
 			},
 		},
 	}
@@ -324,15 +358,22 @@ func TestWriteRofiTempfile(t *testing.T) {
 		{
 			name: "single connected device",
 			devices: []Device{
-				{Name: "AA:BB My Headphones", Connected: true},
+				{MAC: "AA:BB", Name: "My Headphones", Connected: true},
 			},
 			want: "󰂱: AA:BB My Headphones\n",
 		},
 		{
+			name: "device without a name has no trailing space",
+			devices: []Device{
+				{MAC: "AA:BB", Name: "", Connected: true},
+			},
+			want: "󰂱: AA:BB\n",
+		},
+		{
 			name: "mixed devices preserve given order",
 			devices: []Device{
-				{Name: "AA:BB My Headphones", Connected: true},
-				{Name: "11:22 Other Device", Connected: false},
+				{MAC: "AA:BB", Name: "My Headphones", Connected: true},
+				{MAC: "11:22", Name: "Other Device", Connected: false},
 			},
 			want: "󰂱: AA:BB My Headphones\n󰂲: 11:22 Other Device\n",
 		},
@@ -355,45 +396,6 @@ func TestWriteRofiTempfile(t *testing.T) {
 			}
 			if string(got) != tt.want {
 				t.Errorf("writeRofiTempfile() wrote %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-// TestUserSelectionDerivesConnectCommand characterizes the full mapping that
-// main() relies on: from a rofi selection line to the (MAC, action) pair fed
-// into connectDevice. It composes getMacFromUserInput + getConnectAction — the
-// two functions the Device-model split will fold into a single by-MAC lookup —
-// and locks their combined contract so the split can be proven behavior-
-// preserving. The asserted values must survive the refactor unchanged.
-func TestUserSelectionDerivesConnectCommand(t *testing.T) {
-	tests := []struct {
-		name           string
-		selection      string
-		wantMAC        string
-		wantDisconnect string // "dis" => disconnect, "" => connect
-	}{
-		{
-			name:           "connected device selected requests disconnect",
-			selection:      "󰂱: AA:BB:CC:DD:EE:FF My Headphones",
-			wantMAC:        "AA:BB:CC:DD:EE:FF",
-			wantDisconnect: "dis",
-		},
-		{
-			name:           "disconnected device selected requests connect",
-			selection:      "󰂲: 11:22:33:44:55:66 Other Device",
-			wantMAC:        "11:22:33:44:55:66",
-			wantDisconnect: "",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := getMacFromUserInput(tt.selection); got != tt.wantMAC {
-				t.Errorf("getMacFromUserInput(%q) = %q, want %q", tt.selection, got, tt.wantMAC)
-			}
-			if got := getConnectAction(tt.selection); got != tt.wantDisconnect {
-				t.Errorf("getConnectAction(%q) = %q, want %q", tt.selection, got, tt.wantDisconnect)
 			}
 		})
 	}

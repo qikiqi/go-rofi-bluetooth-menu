@@ -88,7 +88,7 @@ func TestConnectDevice(t *testing.T) {
 	logFile := filepath.Join(dir, "invocations.log")
 	stubExecutable(t, "bluetoothctl", fmt.Sprintf("cat >> %q", logFile))
 
-	connectDevice(context.Background(), bluetoothctlRunner{}, "AA:BB:CC:DD:EE:FF", "dis")
+	connectDevice(context.Background(), bluetoothctlRunner{}, Device{MAC: "AA:BB:CC:DD:EE:FF", Connected: true})
 
 	got, err := os.ReadFile(logFile)
 	if err != nil {
