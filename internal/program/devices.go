@@ -76,12 +76,15 @@ func sortByConnected(devices map[string]Device) []Device {
 
 // writeRofiTempfile renders one menu line per device as "<symbol>: <MAC> <name>"
 // (the name is omitted, with no trailing space, when empty).
-func writeRofiTempfile(tempFile *os.File, devices []Device) {
+func writeRofiTempfile(tempFile *os.File, devices []Device) error {
 	for _, d := range devices {
 		entry := strings.TrimSpace(d.MAC + " " + d.Name)
 		slog.Debug("menu entry", "symbol", symbol(d.Connected), "mac", d.MAC, "name", d.Name)
-		fmt.Fprintf(tempFile, "%s: %s\n", symbol(d.Connected), entry)
+		if _, err := fmt.Fprintf(tempFile, "%s: %s\n", symbol(d.Connected), entry); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // selectedMAC extracts the MAC from a rendered menu selection of the form

@@ -2,6 +2,7 @@ package program
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -11,7 +12,8 @@ import (
 	"github.com/qikiqi/go-rofi-bluetooth-menu/internal/version"
 )
 
-// Run executes the rofi Bluetooth menu.
+// Run parses flags, configures logging, and executes the rofi Bluetooth menu,
+// exiting non-zero on a fatal error.
 func Run(ctx context.Context) {
 	logLevel := flag.String("loglevel", "info", "set log level: debug, info, warn, error")
 	versionFlag := flag.Bool("version", false, "Print the version information")
@@ -34,37 +36,55 @@ func Run(ctx context.Context) {
 		return
 	}
 
-	bt := bluetoothctlRunner{}
-	menu := rofiMenu{}
+	if err := run(ctx, bluetoothctlRunner{}, rofiMenu{}); err != nil {
+		slog.Error("fatal error", "err", err)
+		os.Exit(1)
+	}
+}
 
+// run lists devices, presents the menu, and toggles the chosen device. It
+// returns nil for normal outcomes (including the user dismissing the menu) and
+// an error only for genuine failures.
+func run(ctx context.Context, bt Bluetoothctl, menu Menu) error {
 	tempFile, err := os.CreateTemp("", "bluetooth")
 	if err != nil {
-		slog.Error("cannot create tempfile", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("create tempfile: %w", err)
 	}
 	defer os.Remove(tempFile.Name())
 
-	connected := parseDevices(bt.Run(ctx, "devices Connected"))
-	paired := parseDevices(bt.Run(ctx, "devices"))
-
-	allDevices := mergeDevices(connected, paired)
-	allDevicesSorted := sortByConnected(allDevices)
-
-	writeRofiTempfile(tempFile, allDevicesSorted)
-
-	userInput, err := menu.Prompt(ctx, tempFile.Name())
+	connectedOut, err := bt.Run(ctx, "devices Connected")
 	if err != nil {
-		slog.Error("rofi failed", "err", err, "output", userInput)
-		return
+		return fmt.Errorf("list connected devices: %w", err)
+	}
+	pairedOut, err := bt.Run(ctx, "devices")
+	if err != nil {
+		return fmt.Errorf("list paired devices: %w", err)
 	}
 
-	device, err := resolveSelection(userInput, allDevices)
-	if err != nil {
-		slog.Warn("could not resolve selection", "err", err, "selection", userInput)
-		return
+	allDevices := mergeDevices(parseDevices(connectedOut), parseDevices(pairedOut))
+	if err := writeRofiTempfile(tempFile, sortByConnected(allDevices)); err != nil {
+		return fmt.Errorf("write menu: %w", err)
 	}
 
-	connectDevice(ctx, bt, device)
+	selection, err := menu.Prompt(ctx, tempFile.Name())
+	if err != nil {
+		if errors.Is(err, ErrNoSelection) {
+			slog.Info("no selection made")
+			return nil
+		}
+		return fmt.Errorf("prompt: %w", err)
+	}
+
+	device, err := resolveSelection(selection, allDevices)
+	if err != nil {
+		slog.Warn("could not resolve selection", "err", err, "selection", selection)
+		return nil
+	}
+
+	if err := connectDevice(ctx, bt, device); err != nil {
+		return fmt.Errorf("toggle %s: %w", device.MAC, err)
+	}
+	return nil
 }
 
 // parseLogLevel maps a -loglevel string to a slog.Level.

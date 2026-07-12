@@ -22,9 +22,9 @@ type fakeBluetoothctl struct {
 	output   string
 }
 
-func (f *fakeBluetoothctl) Run(_ context.Context, command string) string {
+func (f *fakeBluetoothctl) Run(_ context.Context, command string) (string, error) {
 	f.commands = append(f.commands, command)
-	return f.output
+	return f.output, nil
 }
 
 func TestSymbol(t *testing.T) {
@@ -215,7 +215,9 @@ func TestSelectionIssuesConnectCommand(t *testing.T) {
 				t.Fatalf("resolveSelection(%q) error = %v", tt.selection, err)
 			}
 			bt := &fakeBluetoothctl{}
-			connectDevice(context.Background(), bt, device)
+			if err := connectDevice(context.Background(), bt, device); err != nil {
+				t.Fatalf("connectDevice() error = %v", err)
+			}
 			if !reflect.DeepEqual(bt.commands, tt.wantCmds) {
 				t.Errorf("connectDevice issued %v, want %v", bt.commands, tt.wantCmds)
 			}
@@ -388,7 +390,9 @@ func TestWriteRofiTempfile(t *testing.T) {
 			}
 			defer f.Close()
 
-			writeRofiTempfile(f, tt.devices)
+			if err := writeRofiTempfile(f, tt.devices); err != nil {
+				t.Fatalf("writeRofiTempfile() error = %v", err)
+			}
 
 			got, err := os.ReadFile(f.Name())
 			if err != nil {

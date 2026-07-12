@@ -2,7 +2,7 @@ package program
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 	"os/exec"
 	"strings"
 	"time"
@@ -16,7 +16,7 @@ const bluetoothctlTimeout = 30 * time.Second
 // Bluetoothctl runs a command against the system bluetoothctl and returns its
 // output.
 type Bluetoothctl interface {
-	Run(ctx context.Context, command string) string
+	Run(ctx context.Context, command string) (string, error)
 }
 
 var _ Bluetoothctl = bluetoothctlRunner{}
@@ -26,7 +26,7 @@ var _ Bluetoothctl = bluetoothctlRunner{}
 // it; bluetoothctl runs it and exits on EOF.
 type bluetoothctlRunner struct{}
 
-func (bluetoothctlRunner) Run(ctx context.Context, command string) string {
+func (bluetoothctlRunner) Run(ctx context.Context, command string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, bluetoothctlTimeout)
 	defer cancel()
 
@@ -34,19 +34,23 @@ func (bluetoothctlRunner) Run(ctx context.Context, command string) string {
 	cmd.Stdin = strings.NewReader(command + "\n")
 	out, err := cmd.Output()
 	if err != nil {
-		slog.Error("bluetoothctl failed", "command", command, "err", err)
+		return "", fmt.Errorf("bluetoothctl %q: %w", command, err)
 	}
-	return string(out)
+	return string(out), nil
 }
 
 // connectDevice powers the adapter on and toggles the device: a currently
 // connected device is disconnected, otherwise it is connected.
-func connectDevice(ctx context.Context, bt Bluetoothctl, device Device) {
-	bt.Run(ctx, "power on")
+func connectDevice(ctx context.Context, bt Bluetoothctl, device Device) error {
+	if _, err := bt.Run(ctx, "power on"); err != nil {
+		return err
+	}
 	action := "connect"
 	if device.Connected {
 		action = "disconnect"
 	}
-	slog.Debug("bluetoothctl action", "cmd", action+" "+device.MAC)
-	bt.Run(ctx, action+" "+device.MAC)
+	if _, err := bt.Run(ctx, action+" "+device.MAC); err != nil {
+		return err
+	}
+	return nil
 }

@@ -36,10 +36,12 @@ func stubExecutable(t *testing.T, name, scriptBody string) string {
 func TestRunBluetoothctl(t *testing.T) {
 	stubExecutable(t, "bluetoothctl", "cat")
 
-	got := bluetoothctlRunner{}.Run(context.Background(), "devices")
-
+	got, err := bluetoothctlRunner{}.Run(context.Background(), "devices")
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
 	if !strings.Contains(got, "devices") {
-		t.Errorf("runBluetoothctl(%q) = %q, want output to contain the piped command", "devices", got)
+		t.Errorf("Run(%q) = %q, want output to contain the piped command", "devices", got)
 	}
 }
 
@@ -48,8 +50,10 @@ func TestRunBluetoothctl_MissingBinary(t *testing.T) {
 	// Run logs the error and returns empty output.
 	t.Setenv("PATH", t.TempDir())
 
-	got := bluetoothctlRunner{}.Run(context.Background(), "devices")
-
+	got, err := bluetoothctlRunner{}.Run(context.Background(), "devices")
+	if err == nil {
+		t.Error("Run() error = nil, want an error when bluetoothctl is missing")
+	}
 	if got != "" {
 		t.Errorf("Run() = %q, want empty output when bluetoothctl is missing", got)
 	}
@@ -68,10 +72,10 @@ echo "selected line"`, argsFile)
 	tempFileName := filepath.Join(dir, "menu-input")
 	got, err := rofiMenu{}.Prompt(context.Background(), tempFileName)
 	if err != nil {
-		t.Fatalf("runRofi() error = %v", err)
+		t.Fatalf("Prompt() error = %v", err)
 	}
-	if got != "selected line\n" {
-		t.Errorf("runRofi() = %q, want %q", got, "selected line\n")
+	if got != "selected line" {
+		t.Errorf("Prompt() = %q, want %q", got, "selected line")
 	}
 
 	args, err := os.ReadFile(argsFile)
@@ -88,7 +92,9 @@ func TestConnectDevice(t *testing.T) {
 	logFile := filepath.Join(dir, "invocations.log")
 	stubExecutable(t, "bluetoothctl", fmt.Sprintf("cat >> %q", logFile))
 
-	connectDevice(context.Background(), bluetoothctlRunner{}, Device{MAC: "AA:BB:CC:DD:EE:FF", Connected: true})
+	if err := connectDevice(context.Background(), bluetoothctlRunner{}, Device{MAC: "AA:BB:CC:DD:EE:FF", Connected: true}); err != nil {
+		t.Fatalf("connectDevice() error = %v", err)
+	}
 
 	got, err := os.ReadFile(logFile)
 	if err != nil {
