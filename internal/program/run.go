@@ -16,7 +16,6 @@ func Run(ctx context.Context) {
 	logLevel := flag.String("loglevel", "info", "set log level: debug, info, warn, error")
 	versionFlag := flag.Bool("version", false, "Print the version information")
 	vFlag := flag.Bool("v", false, "Print the version information (shorthand)")
-	benchmarkFlag := flag.Bool("benchmark", false, "Launch in benchmark mode")
 
 	flag.Parse()
 
@@ -49,11 +48,6 @@ func Run(ctx context.Context) {
 	allDevicesSorted := sortByConnected(allDevices)
 
 	writeRofiTempfile(tempFile, allDevicesSorted)
-
-	if *benchmarkFlag {
-		slog.Info("benchmark run finished")
-		os.Exit(0)
-	}
 
 	userInput, err := menu.Prompt(ctx, tempFile.Name())
 	if err != nil {
