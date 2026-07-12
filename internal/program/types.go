@@ -5,7 +5,7 @@ type Device struct {
 	Connected bool
 }
 
-func getSymbol(status bool) string {
+func symbol(status bool) string {
 	if status {
 		return "󰂱"
 	}

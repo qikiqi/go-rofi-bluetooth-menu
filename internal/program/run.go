@@ -47,11 +47,11 @@ func Run() {
 	}
 	defer os.Remove(tempFile.Name())
 
-	connected := sanitizeDevice(bt.Run(ctx, "devices Connected"))
-	paired := sanitizeDevice(bt.Run(ctx, "devices"))
+	connected := parseDevices(bt.Run(ctx, "devices Connected"))
+	paired := parseDevices(bt.Run(ctx, "devices"))
 
-	allDevices := createDeviceMap(connected, paired)
-	allDevicesSorted := sortDeviceMapByConnected(allDevices)
+	allDevices := mergeDevices(connected, paired)
+	allDevicesSorted := sortByConnected(allDevices)
 
 	writeRofiTempfile(tempFile, allDevicesSorted)
 

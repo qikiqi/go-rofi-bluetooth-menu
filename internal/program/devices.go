@@ -22,7 +22,7 @@ func validMAC(input string, devices map[string]Device) bool {
 	return false
 }
 
-func sanitizeDevice(input string) []string {
+func parseDevices(input string) []string {
 	var devices []string
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	for scanner.Scan() {
@@ -49,12 +49,12 @@ func getConnectAction(input string) string {
 
 func writeRofiTempfile(tempFile *os.File, allDevicesSorted []Device) {
 	for _, device := range allDevicesSorted {
-		log.Info().Msgf("%s: %s", getSymbol(device.Connected), device.Name)
-		tempFile.WriteString(fmt.Sprintf("%s: %s\n", getSymbol(device.Connected), device.Name))
+		log.Info().Msgf("%s: %s", symbol(device.Connected), device.Name)
+		tempFile.WriteString(fmt.Sprintf("%s: %s\n", symbol(device.Connected), device.Name))
 	}
 }
 
-func sortDeviceMapByConnected(allDevices map[string]Device) []Device {
+func sortByConnected(allDevices map[string]Device) []Device {
 	deviceList := make([]Device, 0, len(allDevices))
 	for _, device := range allDevices {
 		deviceList = append(deviceList, device)
@@ -66,7 +66,7 @@ func sortDeviceMapByConnected(allDevices map[string]Device) []Device {
 	return deviceList
 }
 
-func createDeviceMap(connected, paired []string) map[string]Device {
+func mergeDevices(connected, paired []string) map[string]Device {
 	allDevices := make(map[string]Device)
 
 	for _, mac := range connected {

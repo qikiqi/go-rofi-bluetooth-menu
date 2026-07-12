@@ -16,7 +16,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestGetSymbol(t *testing.T) {
+func TestSymbol(t *testing.T) {
 	tests := []struct {
 		name      string
 		connected bool
@@ -28,14 +28,14 @@ func TestGetSymbol(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := getSymbol(tt.connected); got != tt.want {
-				t.Errorf("getSymbol(%v) = %q, want %q", tt.connected, got, tt.want)
+			if got := symbol(tt.connected); got != tt.want {
+				t.Errorf("symbol(%v) = %q, want %q", tt.connected, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestSanitizeDevice(t *testing.T) {
+func TestParseDevices(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
@@ -79,9 +79,9 @@ func TestSanitizeDevice(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := sanitizeDevice(tt.input)
+			got := parseDevices(tt.input)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("sanitizeDevice(%q) = %#v, want %#v", tt.input, got, tt.want)
+				t.Errorf("parseDevices(%q) = %#v, want %#v", tt.input, got, tt.want)
 			}
 		})
 	}
@@ -193,7 +193,7 @@ func TestValidMAC(t *testing.T) {
 	}
 }
 
-func TestSortDeviceMapByConnected(t *testing.T) {
+func TestSortByConnected(t *testing.T) {
 	tests := []struct {
 		name    string
 		devices map[string]Device
@@ -230,10 +230,10 @@ func TestSortDeviceMapByConnected(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := sortDeviceMapByConnected(tt.devices)
+			got := sortByConnected(tt.devices)
 
 			if len(got) != len(tt.devices) {
-				t.Fatalf("sortDeviceMapByConnected() returned %d devices, want %d", len(got), len(tt.devices))
+				t.Fatalf("sortByConnected() returned %d devices, want %d", len(got), len(tt.devices))
 			}
 
 			// Map iteration order is randomized, so only assert the
@@ -261,7 +261,7 @@ func TestSortDeviceMapByConnected(t *testing.T) {
 	}
 }
 
-func TestCreateDeviceMap(t *testing.T) {
+func TestMergeDevices(t *testing.T) {
 	tests := []struct {
 		name      string
 		connected []string
@@ -303,9 +303,9 @@ func TestCreateDeviceMap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := createDeviceMap(tt.connected, tt.paired)
+			got := mergeDevices(tt.connected, tt.paired)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("createDeviceMap(%v, %v) = %+v, want %+v", tt.connected, tt.paired, got, tt.want)
+				t.Errorf("mergeDevices(%v, %v) = %+v, want %+v", tt.connected, tt.paired, got, tt.want)
 			}
 		})
 	}
