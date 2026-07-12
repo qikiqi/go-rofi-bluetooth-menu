@@ -1,6 +1,7 @@
 package program
 
 import (
+	"context"
 	"flag"
 	"os"
 	"strings"
@@ -33,6 +34,10 @@ func Run() {
 		os.Exit(0)
 	}
 
+	ctx := context.Background()
+	bt := bluetoothctlRunner{}
+	menu := rofiMenu{}
+
 	tempFile, err := os.CreateTemp("", "bluetooth")
 	if err != nil {
 		log.Fatal().
@@ -42,8 +47,8 @@ func Run() {
 	}
 	defer os.Remove(tempFile.Name())
 
-	connected := sanitizeDevice(runBluetoothctl("devices Connected"))
-	paired := sanitizeDevice(runBluetoothctl("devices"))
+	connected := sanitizeDevice(bt.Run(ctx, "devices Connected"))
+	paired := sanitizeDevice(bt.Run(ctx, "devices"))
 
 	allDevices := createDeviceMap(connected, paired)
 	allDevicesSorted := sortDeviceMapByConnected(allDevices)
@@ -55,7 +60,7 @@ func Run() {
 		os.Exit(0)
 	}
 
-	userInput, err := runRofi(tempFile.Name())
+	userInput, err := menu.Prompt(ctx, tempFile.Name())
 	if err != nil {
 		log.Error().Msgf("Error running rofi: %v", err)
 		log.Error().Msgf("userInput: %s", userInput)
@@ -67,5 +72,5 @@ func Run() {
 		return
 	}
 
-	connectDevice(getMacFromUserInput(userInput), getConnectAction(userInput))
+	connectDevice(ctx, bt, getMacFromUserInput(userInput), getConnectAction(userInput))
 }
