@@ -51,7 +51,7 @@ func runBluetoothctl(command string) string {
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
-		log.Error().Msgf("Error running bluetoothctl:", err)
+		log.Error().Msgf("Error running bluetoothctl: %v", err)
 	}
 	return out.String()
 }
