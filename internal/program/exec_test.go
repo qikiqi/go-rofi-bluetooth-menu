@@ -1,7 +1,6 @@
 package program
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,7 +35,7 @@ func stubExecutable(t *testing.T, name, scriptBody string) string {
 func TestRunBluetoothctl(t *testing.T) {
 	stubExecutable(t, "bluetoothctl", "cat")
 
-	got, err := bluetoothctlRunner{}.Run(context.Background(), "devices")
+	got, err := bluetoothctlRunner{}.Run(t.Context(), "devices")
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -50,7 +49,7 @@ func TestRunBluetoothctl_MissingBinary(t *testing.T) {
 	// Run logs the error and returns empty output.
 	t.Setenv("PATH", t.TempDir())
 
-	got, err := bluetoothctlRunner{}.Run(context.Background(), "devices")
+	got, err := bluetoothctlRunner{}.Run(t.Context(), "devices")
 	if err == nil {
 		t.Error("Run() error = nil, want an error when bluetoothctl is missing")
 	}
@@ -70,7 +69,7 @@ echo "selected line"`, argsFile)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	tempFileName := filepath.Join(dir, "menu-input")
-	got, err := rofiMenu{}.Prompt(context.Background(), tempFileName)
+	got, err := rofiMenu{}.Prompt(t.Context(), tempFileName)
 	if err != nil {
 		t.Fatalf("Prompt() error = %v", err)
 	}
@@ -92,7 +91,7 @@ func TestConnectDevice(t *testing.T) {
 	logFile := filepath.Join(dir, "invocations.log")
 	stubExecutable(t, "bluetoothctl", fmt.Sprintf("cat >> %q", logFile))
 
-	if err := connectDevice(context.Background(), bluetoothctlRunner{}, Device{MAC: "AA:BB:CC:DD:EE:FF", Connected: true}); err != nil {
+	if err := connectDevice(t.Context(), bluetoothctlRunner{}, Device{MAC: "AA:BB:CC:DD:EE:FF", Connected: true}); err != nil {
 		t.Fatalf("connectDevice() error = %v", err)
 	}
 

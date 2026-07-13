@@ -4,8 +4,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"maps"
 	"os"
-	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -95,7 +96,7 @@ func TestParseDevices(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := parseDevices(tt.input)
-			if !reflect.DeepEqual(got, tt.want) {
+			if !slices.Equal(got, tt.want) {
 				t.Errorf("parseDevices(%q) = %#v, want %#v", tt.input, got, tt.want)
 			}
 		})
@@ -215,10 +216,10 @@ func TestSelectionIssuesConnectCommand(t *testing.T) {
 				t.Fatalf("resolveSelection(%q) error = %v", tt.selection, err)
 			}
 			bt := &fakeBluetoothctl{}
-			if err := connectDevice(context.Background(), bt, device); err != nil {
+			if err := connectDevice(t.Context(), bt, device); err != nil {
 				t.Fatalf("connectDevice() error = %v", err)
 			}
-			if !reflect.DeepEqual(bt.commands, tt.wantCmds) {
+			if !slices.Equal(bt.commands, tt.wantCmds) {
 				t.Errorf("connectDevice issued %v, want %v", bt.commands, tt.wantCmds)
 			}
 		})
@@ -339,7 +340,7 @@ func TestMergeDevices(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := mergeDevices(tt.connected, tt.paired)
-			if !reflect.DeepEqual(got, tt.want) {
+			if !maps.Equal(got, tt.want) {
 				t.Errorf("mergeDevices(%v, %v) = %+v, want %+v", tt.connected, tt.paired, got, tt.want)
 			}
 		})
