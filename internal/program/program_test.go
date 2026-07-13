@@ -451,3 +451,35 @@ func TestWriteRofiTempfile(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatScriptRow(t *testing.T) {
+	tests := []struct {
+		name   string
+		device Device
+		want   string
+	}{
+		{
+			name:   "connected device with name",
+			device: Device{MAC: "AA:BB:CC:DD:EE:FF", Name: "My Headphones", Connected: true},
+			want:   "󰂱: AA:BB:CC:DD:EE:FF My Headphones\x00info\x1fAA:BB:CC:DD:EE:FF",
+		},
+		{
+			name:   "disconnected device with name",
+			device: Device{MAC: "11:22:33:44:55:66", Name: "Other Device", Connected: false},
+			want:   "󰂲: 11:22:33:44:55:66 Other Device\x00info\x1f11:22:33:44:55:66",
+		},
+		{
+			name:   "device without a name has no trailing space",
+			device: Device{MAC: "AA:BB", Connected: true},
+			want:   "󰂱: AA:BB\x00info\x1fAA:BB",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := formatScriptRow(tt.device); got != tt.want {
+				t.Errorf("formatScriptRow(%+v) = %q, want %q", tt.device, got, tt.want)
+			}
+		})
+	}
+}

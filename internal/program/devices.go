@@ -109,6 +109,16 @@ func writeRofiTempfile(tempFile *os.File, devices []Device) error {
 	return nil
 }
 
+// formatScriptRow renders a device as a rofi script-mode row: the same
+// "<symbol>: <MAC> <name>" text writeRofiTempfile produces, plus a hidden
+// \0info\x1f<MAC> field so the follow-up ROFI_RETV=1 call gets the MAC via
+// the ROFI_INFO env var instead of it having to be parsed back out of the
+// display text.
+func formatScriptRow(d Device) string {
+	entry := strings.TrimSpace(d.MAC + " " + d.Name)
+	return fmt.Sprintf("%s: %s\x00info\x1f%s", symbol(d.Connected), entry, d.MAC)
+}
+
 // selectedMAC extracts the MAC from a rendered menu selection of the form
 // "<symbol>: <MAC> <name>", returning an error instead of panicking when the
 // selection has no MAC field.
