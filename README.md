@@ -24,10 +24,12 @@ go build -o go-rofi-bluetooth-menu .
 
 ## Usage
 
-Run it directly, or bind it to a key in your window manager. For Sway:
+This is a rofi [script-mode](https://github.com/davatorium/rofi/blob/next/doc/rofi-script.5.markdown)
+`-modi`: rofi execs the binary itself, so it's invoked through `rofi -modi`,
+not run directly. Bind it to a key in your window manager. For Sway:
 
 ```
-bindsym $mod+b exec go-rofi-bluetooth-menu
+bindsym $mod+b exec rofi -show bluetooth -modi "bluetooth:/path/to/go-rofi-bluetooth-menu"
 ```
 
 The menu shows one entry per device as `<symbol>: <MAC> <name>`, connected
@@ -40,9 +42,14 @@ devices first:
 
 Picking a **connected** device (󰂱) disconnects it; picking a **disconnected**
 device (󰂲) powers the adapter on and connects it. Dismissing the menu without
-choosing anything does nothing.
+choosing anything does nothing. Free-typed text that doesn't match a device
+is rejected by rofi itself — there's no action to take on it.
 
-### Flags
+### Manual invocation
+
+Running the binary directly (no `ROFI_RETV` in the environment, i.e. outside
+of rofi) prints the same rows rofi would receive, to stdout, for
+inspection — it does not open a menu:
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -53,9 +60,10 @@ Logs are written to stderr as structured `log/slog` text.
 
 ### Exit codes
 
-- `0` — success, including when the menu is dismissed with no selection.
-- `1` — a fatal error (invalid `-loglevel`, `bluetoothctl` failure, `rofi`
-  could not be launched, etc.). The reason is logged before exit.
+- `0` — success, including when a picked line no longer matches a known
+  device.
+- `1` — a fatal error (invalid `-loglevel`, a `bluetoothctl` call failing,
+  etc.). The reason is logged before exit.
 
 `SIGINT` / `SIGTERM` cancel any in-flight subprocess and exit cleanly.
 
@@ -67,9 +75,10 @@ go vet ./...
 go test ./...
 ```
 
-The Bluetooth and rofi integrations sit behind interfaces, so the tests run
-against fakes and hermetic stub scripts — no real hardware or display server
-required. See [ARCHITECTURE.md](ARCHITECTURE.md) for the package layout.
+The `bluetoothctl` integration sits behind an interface, so the tests run
+against a fake and a hermetic stub script — no real hardware required. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the package layout and the
+script-mode protocol details.
 
 ## License
 
