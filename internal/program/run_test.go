@@ -46,20 +46,47 @@ func TestListDevices(t *testing.T) {
 }
 
 func TestSelectDevice(t *testing.T) {
-	t.Run("toggles the device matching mac", func(t *testing.T) {
-		t.Parallel()
-		bt := &fakeBluetoothctl{outputs: map[string]string{
-			"devices Connected": "Device AA:BB:CC:DD:EE:FF My Headphones\n",
-			"devices":           "Device AA:BB:CC:DD:EE:FF My Headphones\n",
-		}}
-
-		if err := selectDevice(t.Context(), bt, "AA:BB:CC:DD:EE:FF"); err != nil {
-			t.Fatalf("selectDevice() error = %v", err)
+	// Characterizes the same invariant TestSelectionIssuesConnectCommand
+	// used to pin before the ROFI_INFO migration: a given pick must produce
+	// exactly the same bluetoothctl commands, in both directions.
+	t.Run("issues the right toggle command", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			outputs  map[string]string
+			mac      string
+			wantCmds []string
+		}{
+			{
+				name: "connected device toggles to disconnect",
+				outputs: map[string]string{
+					"devices Connected": "Device AA:BB:CC:DD:EE:FF My Headphones\n",
+					"devices":           "Device AA:BB:CC:DD:EE:FF My Headphones\n",
+				},
+				mac:      "AA:BB:CC:DD:EE:FF",
+				wantCmds: []string{"devices Connected", "devices", "power on", "disconnect AA:BB:CC:DD:EE:FF"},
+			},
+			{
+				name: "disconnected device toggles to connect",
+				outputs: map[string]string{
+					"devices Connected": "",
+					"devices":           "Device 11:22:33:44:55:66 Other Device\n",
+				},
+				mac:      "11:22:33:44:55:66",
+				wantCmds: []string{"devices Connected", "devices", "power on", "connect 11:22:33:44:55:66"},
+			},
 		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				bt := &fakeBluetoothctl{outputs: tt.outputs}
 
-		want := []string{"devices Connected", "devices", "power on", "disconnect AA:BB:CC:DD:EE:FF"}
-		if !slices.Equal(bt.commands, want) {
-			t.Errorf("selectDevice() issued commands %v, want %v", bt.commands, want)
+				if err := selectDevice(t.Context(), bt, tt.mac); err != nil {
+					t.Fatalf("selectDevice() error = %v", err)
+				}
+				if !slices.Equal(bt.commands, tt.wantCmds) {
+					t.Errorf("selectDevice() issued commands %v, want %v", bt.commands, tt.wantCmds)
+				}
+			})
 		}
 	})
 

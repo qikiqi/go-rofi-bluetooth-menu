@@ -2,7 +2,6 @@ package program
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -119,50 +118,6 @@ func selectDevice(ctx context.Context, bt Bluetoothctl, mac string) error {
 		slog.Warn("could not resolve selection", "mac", mac)
 		return nil
 	}
-	if err := connectDevice(ctx, bt, device); err != nil {
-		return fmt.Errorf("toggle %s: %w", device.MAC, err)
-	}
-	return nil
-}
-
-// run lists devices, presents the menu, and toggles the chosen device. It
-// returns nil for normal outcomes (including the user dismissing the menu) and
-// an error only for genuine failures.
-//
-// Deprecated: superseded by listDevices/selectDevice via rofi script-mode
-// (see Run). Kept only until the menu.go/tempfile path it depends on is
-// removed in a follow-up commit.
-func run(ctx context.Context, bt Bluetoothctl, menu Menu) error {
-	tempFile, err := os.CreateTemp("", "bluetooth")
-	if err != nil {
-		return fmt.Errorf("create tempfile: %w", err)
-	}
-	defer func() { _ = tempFile.Close() }()
-	defer func() { _ = os.Remove(tempFile.Name()) }()
-
-	allDevices, err := gatherDevices(ctx, bt)
-	if err != nil {
-		return err
-	}
-	if err := writeRofiTempfile(tempFile, sortByConnected(allDevices)); err != nil {
-		return fmt.Errorf("write menu: %w", err)
-	}
-
-	selection, err := menu.Prompt(ctx, tempFile.Name())
-	if err != nil {
-		if errors.Is(err, ErrNoSelection) {
-			slog.Info("no selection made")
-			return nil
-		}
-		return fmt.Errorf("prompt: %w", err)
-	}
-
-	device, err := resolveSelection(selection, allDevices)
-	if err != nil {
-		slog.Warn("could not resolve selection", "err", err, "selection", selection)
-		return nil
-	}
-
 	if err := connectDevice(ctx, bt, device); err != nil {
 		return fmt.Errorf("toggle %s: %w", device.MAC, err)
 	}

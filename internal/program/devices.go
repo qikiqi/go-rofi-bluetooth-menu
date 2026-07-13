@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 	"slices"
 	"strings"
 )
@@ -96,50 +94,11 @@ func sortByConnected(devices map[string]Device) []Device {
 	return list
 }
 
-// writeRofiTempfile renders one menu line per device as "<symbol>: <MAC> <name>"
-// (the name is omitted, with no trailing space, when empty).
-func writeRofiTempfile(tempFile *os.File, devices []Device) error {
-	for _, d := range devices {
-		entry := strings.TrimSpace(d.MAC + " " + d.Name)
-		slog.Debug("menu entry", "symbol", symbol(d.Connected), "mac", d.MAC, "name", d.Name)
-		if _, err := fmt.Fprintf(tempFile, "%s: %s\n", symbol(d.Connected), entry); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// formatScriptRow renders a device as a rofi script-mode row: the same
-// "<symbol>: <MAC> <name>" text writeRofiTempfile produces, plus a hidden
-// \0info\x1f<MAC> field so the follow-up ROFI_RETV=1 call gets the MAC via
-// the ROFI_INFO env var instead of it having to be parsed back out of the
-// display text.
+// formatScriptRow renders a device as a rofi script-mode row: visible text
+// "<symbol>: <MAC> <name>", plus a hidden \0info\x1f<MAC> field so the
+// follow-up ROFI_RETV=1 call gets the MAC via the ROFI_INFO env var instead
+// of it having to be parsed back out of the display text.
 func formatScriptRow(d Device) string {
 	entry := strings.TrimSpace(d.MAC + " " + d.Name)
 	return fmt.Sprintf("%s: %s\x00info\x1f%s", symbol(d.Connected), entry, d.MAC)
-}
-
-// selectedMAC extracts the MAC from a rendered menu selection of the form
-// "<symbol>: <MAC> <name>", returning an error instead of panicking when the
-// selection has no MAC field.
-func selectedMAC(selection string) (string, error) {
-	fields := strings.Fields(selection)
-	if len(fields) < 2 {
-		return "", fmt.Errorf("selection %q has no MAC field", selection)
-	}
-	return fields[1], nil
-}
-
-// resolveSelection maps a menu selection back to the Device it refers to,
-// looking it up by the MAC embedded in the selection line.
-func resolveSelection(selection string, devices map[string]Device) (Device, error) {
-	mac, err := selectedMAC(selection)
-	if err != nil {
-		return Device{}, err
-	}
-	device, ok := devices[mac]
-	if !ok {
-		return Device{}, fmt.Errorf("selection %q (mac %q) not among known devices", selection, mac)
-	}
-	return device, nil
 }
