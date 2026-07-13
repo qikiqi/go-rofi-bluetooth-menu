@@ -2,6 +2,7 @@ package program
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -28,6 +29,20 @@ func parseDevices(input string) []Device {
 		devices = append(devices, Device{MAC: mac, Name: name})
 	}
 	return devices
+}
+
+// gatherDevices lists connected and paired devices via bt and merges them
+// into a MAC-keyed map, marking which are currently connected.
+func gatherDevices(ctx context.Context, bt Bluetoothctl) (map[string]Device, error) {
+	connectedOut, err := bt.Run(ctx, "devices Connected")
+	if err != nil {
+		return nil, fmt.Errorf("list connected devices: %w", err)
+	}
+	pairedOut, err := bt.Run(ctx, "devices")
+	if err != nil {
+		return nil, fmt.Errorf("list paired devices: %w", err)
+	}
+	return mergeDevices(parseDevices(connectedOut), parseDevices(pairedOut)), nil
 }
 
 // splitMACName splits "<MAC> <name...>" into its MAC and (possibly empty) name.

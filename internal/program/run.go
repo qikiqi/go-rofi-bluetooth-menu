@@ -53,16 +53,10 @@ func run(ctx context.Context, bt Bluetoothctl, menu Menu) error {
 	defer func() { _ = tempFile.Close() }()
 	defer func() { _ = os.Remove(tempFile.Name()) }()
 
-	connectedOut, err := bt.Run(ctx, "devices Connected")
+	allDevices, err := gatherDevices(ctx, bt)
 	if err != nil {
-		return fmt.Errorf("list connected devices: %w", err)
+		return err
 	}
-	pairedOut, err := bt.Run(ctx, "devices")
-	if err != nil {
-		return fmt.Errorf("list paired devices: %w", err)
-	}
-
-	allDevices := mergeDevices(parseDevices(connectedOut), parseDevices(pairedOut))
 	if err := writeRofiTempfile(tempFile, sortByConnected(allDevices)); err != nil {
 		return fmt.Errorf("write menu: %w", err)
 	}

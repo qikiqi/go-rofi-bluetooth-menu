@@ -2,6 +2,7 @@ package program
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"maps"
@@ -17,14 +18,24 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// fakeBluetoothctl records the commands it is asked to run.
+// fakeBluetoothctl records the commands it is asked to run. outputs, if set,
+// overrides output on a per-command basis; err, if set, is returned for every
+// call instead of output.
 type fakeBluetoothctl struct {
 	commands []string
 	output   string
+	outputs  map[string]string
+	err      error
 }
 
 func (f *fakeBluetoothctl) Run(_ context.Context, command string) (string, error) {
 	f.commands = append(f.commands, command)
+	if f.err != nil {
+		return "", f.err
+	}
+	if out, ok := f.outputs[command]; ok {
+		return out, nil
+	}
 	return f.output, nil
 }
 
@@ -345,6 +356,41 @@ func TestMergeDevices(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGatherDevices(t *testing.T) {
+	t.Run("merges connected and paired output", func(t *testing.T) {
+		t.Parallel()
+		bt := &fakeBluetoothctl{outputs: map[string]string{
+			"devices Connected": "Device AA:BB:CC:DD:EE:FF My Headphones\n",
+			"devices":           "Device AA:BB:CC:DD:EE:FF My Headphones\nDevice 11:22:33:44:55:66 Other Device\n",
+		}}
+
+		got, err := gatherDevices(t.Context(), bt)
+		if err != nil {
+			t.Fatalf("gatherDevices() error = %v", err)
+		}
+
+		want := map[string]Device{
+			"AA:BB:CC:DD:EE:FF": {MAC: "AA:BB:CC:DD:EE:FF", Name: "My Headphones", Connected: true},
+			"11:22:33:44:55:66": {MAC: "11:22:33:44:55:66", Name: "Other Device", Connected: false},
+		}
+		if !maps.Equal(got, want) {
+			t.Errorf("gatherDevices() = %+v, want %+v", got, want)
+		}
+		if want := []string{"devices Connected", "devices"}; !slices.Equal(bt.commands, want) {
+			t.Errorf("gatherDevices() issued commands %v, want %v", bt.commands, want)
+		}
+	})
+
+	t.Run("propagates bluetoothctl error", func(t *testing.T) {
+		t.Parallel()
+		bt := &fakeBluetoothctl{err: errors.New("boom")}
+
+		if _, err := gatherDevices(t.Context(), bt); err == nil {
+			t.Error("gatherDevices() error = nil, want an error when bluetoothctl fails")
+		}
+	})
 }
 
 func TestWriteRofiTempfile(t *testing.T) {
