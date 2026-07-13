@@ -1,3 +1,5 @@
+// Command go-rofi-bluetooth-menu is a rofi script-mode menu for listing and
+// toggling bluetoothctl-managed devices.
 package main
 
 import (
@@ -12,5 +14,6 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
 	program.Run(ctx)
 }

@@ -3,7 +3,6 @@ package program
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"maps"
 	"os"
@@ -14,7 +13,7 @@ import (
 func TestMain(m *testing.M) {
 	// Silence structured logging; several functions under test log
 	// unconditionally and would otherwise spam test output.
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	slog.SetDefault(slog.New(slog.DiscardHandler))
 	os.Exit(m.Run())
 }
 
@@ -33,13 +32,17 @@ func (f *fakeBluetoothctl) Run(_ context.Context, command string) (string, error
 	if f.err != nil {
 		return "", f.err
 	}
+
 	if out, ok := f.outputs[command]; ok {
 		return out, nil
 	}
+
 	return f.output, nil
 }
 
 func TestSymbol(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		connected bool
@@ -51,6 +54,7 @@ func TestSymbol(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			if got := symbol(tt.connected); got != tt.want {
 				t.Errorf("symbol(%v) = %q, want %q", tt.connected, got, tt.want)
 			}
@@ -59,6 +63,8 @@ func TestSymbol(t *testing.T) {
 }
 
 func TestParseDevices(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		input string
@@ -106,6 +112,7 @@ func TestParseDevices(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := parseDevices(tt.input)
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("parseDevices(%q) = %#v, want %#v", tt.input, got, tt.want)
@@ -115,6 +122,8 @@ func TestParseDevices(t *testing.T) {
 }
 
 func TestSortByConnected(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		devices map[string]Device
@@ -151,6 +160,7 @@ func TestSortByConnected(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := sortByConnected(tt.devices)
 
 			if len(got) != len(tt.devices) {
@@ -173,6 +183,7 @@ func TestSortByConnected(t *testing.T) {
 			for _, d := range got {
 				gotSet[d.MAC] = d
 			}
+
 			for mac, want := range tt.devices {
 				if got, ok := gotSet[mac]; !ok || got != want {
 					t.Errorf("device %q missing or altered in sorted output: got %+v, want %+v", mac, got, want)
@@ -183,6 +194,8 @@ func TestSortByConnected(t *testing.T) {
 }
 
 func TestMergeDevices(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		connected []Device
@@ -227,6 +240,7 @@ func TestMergeDevices(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := mergeDevices(tt.connected, tt.paired)
 			if !maps.Equal(got, tt.want) {
 				t.Errorf("mergeDevices(%v, %v) = %+v, want %+v", tt.connected, tt.paired, got, tt.want)
@@ -238,6 +252,7 @@ func TestMergeDevices(t *testing.T) {
 func TestGatherDevices(t *testing.T) {
 	t.Run("merges connected and paired output", func(t *testing.T) {
 		t.Parallel()
+
 		bt := &fakeBluetoothctl{outputs: map[string]string{
 			"devices Connected": "Device AA:BB:CC:DD:EE:FF My Headphones\n",
 			"devices":           "Device AA:BB:CC:DD:EE:FF My Headphones\nDevice 11:22:33:44:55:66 Other Device\n",
@@ -255,6 +270,7 @@ func TestGatherDevices(t *testing.T) {
 		if !maps.Equal(got, want) {
 			t.Errorf("gatherDevices() = %+v, want %+v", got, want)
 		}
+
 		if want := []string{"devices Connected", "devices"}; !slices.Equal(bt.commands, want) {
 			t.Errorf("gatherDevices() issued commands %v, want %v", bt.commands, want)
 		}
@@ -262,6 +278,7 @@ func TestGatherDevices(t *testing.T) {
 
 	t.Run("propagates bluetoothctl error", func(t *testing.T) {
 		t.Parallel()
+
 		bt := &fakeBluetoothctl{err: errors.New("boom")}
 
 		if _, err := gatherDevices(t.Context(), bt); err == nil {
@@ -271,6 +288,8 @@ func TestGatherDevices(t *testing.T) {
 }
 
 func TestFormatScriptRow(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		device Device
@@ -295,6 +314,7 @@ func TestFormatScriptRow(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			if got := formatScriptRow(tt.device); got != tt.want {
 				t.Errorf("formatScriptRow(%+v) = %q, want %q", tt.device, got, tt.want)
 			}

@@ -24,14 +24,18 @@ func stubExecutable(t *testing.T, name, scriptBody string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, name)
+
 	content := "#!/bin/sh\n" + scriptBody + "\n"
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o700); err != nil { //nolint:gosec // must be executable; written under t.TempDir()
 		t.Fatalf("os.WriteFile(%q) error = %v", path, err)
 	}
+
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
 	return dir
 }
 
+//nolint:paralleltest // stubExecutable calls t.Setenv, which cannot run in parallel
 func TestRunBluetoothctl(t *testing.T) {
 	stubExecutable(t, "bluetoothctl", "cat")
 
@@ -39,6 +43,7 @@ func TestRunBluetoothctl(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
+
 	if !strings.Contains(got, "devices") {
 		t.Errorf("Run(%q) = %q, want output to contain the piped command", "devices", got)
 	}
@@ -53,11 +58,13 @@ func TestRunBluetoothctl_MissingBinary(t *testing.T) {
 	if err == nil {
 		t.Error("Run() error = nil, want an error when bluetoothctl is missing")
 	}
+
 	if got != "" {
 		t.Errorf("Run() = %q, want empty output when bluetoothctl is missing", got)
 	}
 }
 
+//nolint:paralleltest // stubExecutable calls t.Setenv, which cannot run in parallel
 func TestConnectDevice(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "invocations.log")
@@ -67,7 +74,7 @@ func TestConnectDevice(t *testing.T) {
 		t.Fatalf("connectDevice() error = %v", err)
 	}
 
-	got, err := os.ReadFile(logFile)
+	got, err := os.ReadFile(logFile) //nolint:gosec // logFile is built from t.TempDir(), not user input
 	if err != nil {
 		t.Fatalf("os.ReadFile() error = %v", err)
 	}

@@ -14,18 +14,22 @@ import (
 // false — mergeDevices assigns it.
 func parseDevices(input string) []Device {
 	var devices []Device
+
 	scanner := bufio.NewScanner(strings.NewReader(input))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "Device ") {
 			continue
 		}
+
 		mac, name, ok := splitMACName(strings.TrimPrefix(line, "Device "))
 		if !ok {
 			continue
 		}
+
 		devices = append(devices, Device{MAC: mac, Name: name})
 	}
+
 	return devices
 }
 
@@ -36,10 +40,12 @@ func gatherDevices(ctx context.Context, bt Bluetoothctl) (map[string]Device, err
 	if err != nil {
 		return nil, fmt.Errorf("list connected devices: %w", err)
 	}
+
 	pairedOut, err := bt.Run(ctx, "devices")
 	if err != nil {
 		return nil, fmt.Errorf("list paired devices: %w", err)
 	}
+
 	return mergeDevices(parseDevices(connectedOut), parseDevices(pairedOut)), nil
 }
 
@@ -50,11 +56,14 @@ func splitMACName(s string) (mac, name string, ok bool) {
 	if s == "" {
 		return "", "", false
 	}
+
 	parts := strings.SplitN(s, " ", 2)
+
 	mac = parts[0]
 	if len(parts) == 2 {
 		name = strings.TrimSpace(parts[1])
 	}
+
 	return mac, name, true
 }
 
@@ -63,16 +72,19 @@ func splitMACName(s string) (mac, name string, ok bool) {
 // both keeps its connected status.
 func mergeDevices(connected, paired []Device) map[string]Device {
 	all := make(map[string]Device)
+
 	for _, d := range connected {
 		d.Connected = true
 		all[d.MAC] = d
 	}
+
 	for _, d := range paired {
 		if _, exists := all[d.MAC]; !exists {
 			d.Connected = false
 			all[d.MAC] = d
 		}
 	}
+
 	return all
 }
 
@@ -81,6 +93,7 @@ func sortByConnected(devices map[string]Device) []Device {
 	for _, d := range devices {
 		list = append(list, d)
 	}
+
 	slices.SortFunc(list, func(a, b Device) int {
 		switch {
 		case a.Connected == b.Connected:
@@ -91,6 +104,7 @@ func sortByConnected(devices map[string]Device) []Device {
 			return 1
 		}
 	})
+
 	return list
 }
 
