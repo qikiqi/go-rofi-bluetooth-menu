@@ -50,6 +50,7 @@ func run(ctx context.Context, bt Bluetoothctl, menu Menu) error {
 	if err != nil {
 		return fmt.Errorf("create tempfile: %w", err)
 	}
+	defer func() { _ = tempFile.Close() }()
 	defer func() { _ = os.Remove(tempFile.Name()) }()
 
 	connectedOut, err := bt.Run(ctx, "devices Connected")
