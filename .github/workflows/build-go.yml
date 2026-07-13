@@ -29,6 +29,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           allow-initial-development-versions: true
+          custom-arguments: "--provider-opt github_use_compare_commits=true"
       - name: Upload binaries to release
         if: steps.semrel.outputs.version != ''
         uses: svenstaro/upload-release-action@v2
