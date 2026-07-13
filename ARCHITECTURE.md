@@ -1,8 +1,10 @@
 # Architecture
 
-`go-rofi-bluetooth-menu` is a single-shot CLI: it lists Bluetooth devices,
-renders a rofi menu, and toggles the chosen device. It runs once and exits — it
-is not a daemon.
+`go-rofi-bluetooth-menu` is a rofi
+[script-mode](https://github.com/davatorium/rofi/blob/next/doc/rofi-script.5.markdown)
+`-modi`: rofi execs this binary, not the other way around. It runs once per
+call and exits — it is not a daemon, and (unlike an earlier version of this
+tool) it never spawns rofi itself.
 
 ## Package layout
 
@@ -10,12 +12,11 @@ is not a daemon.
 main.go                      # signal.NotifyContext → program.Run(ctx)
 internal/
 ├── program/
-│   ├── run.go               # Run(ctx): flags, slog setup; run(ctx, bt, menu) orchestration
+│   ├── run.go               # Run(ctx): ROFI_RETV dispatch, listDevices, selectDevice
 │   ├── types.go             # Device{MAC, Name, Connected}; symbol()
 │   ├── controller.go        # Bluetoothctl interface + bluetoothctlRunner impl
-│   ├── menu.go              # Menu interface + rofiMenu impl; ErrNoSelection
 │   └── devices.go           # pure logic: parseDevices, mergeDevices, sortByConnected,
-│                            #   writeRofiTempfile, selectedMAC, resolveSelection
+│                            #   gatherDevices, formatScriptRow
 └── version/
     └── version.go           # Print(): build/version info from debug.ReadBuildInfo
 ```
@@ -24,68 +25,95 @@ internal/
 hands off to `program.Run`. All logic lives under `internal/`, so nothing is
 part of an importable public API.
 
-## Dependency seams
+## The rofi script-mode protocol
 
-The two external integrations are expressed as small consumer-side interfaces,
-defined where they are used (`program`) rather than where they are implemented.
-Both have a single production implementation and a compile-time conformance
-check.
+Rofi calls the executable directly as a `-modi`, setting the `ROFI_RETV`
+environment variable to say why:
+
+- `ROFI_RETV` unset or `0` — initial call. Print one line per device to
+  stdout; that becomes the menu.
+- `ROFI_RETV=1` — the user picked a line. `ROFI_INFO` carries whatever
+  hidden payload that row was tagged with.
+- Anything else (`2` custom text, `3` deleted entry, `10+` custom
+  keybindings) — not opted into; `Run` logs it and reprints the list rather
+  than doing nothing silently.
+
+Each printed row can carry a payload invisible to the matcher via a
+`\0info\x1f<value>` suffix. This binary tags every row with its MAC, so the
+`ROFI_RETV=1` call reads the MAC straight out of `ROFI_INFO` — no parsing
+the picked line's text back into a MAC. The very first output line is
+`\0no-custom\x1ftrue`, a mode-level directive telling rofi to reject
+free-typed input entirely, since there's never a device behind arbitrary
+text.
+
+## Dependency seam
+
+The one external integration is a small consumer-side interface, defined
+where it's used (`program`) rather than where it's implemented, with a
+single production implementation and a compile-time conformance check:
 
 ```go
 type Bluetoothctl interface {
     Run(ctx context.Context, command string) (string, error)
 }
-
-type Menu interface {
-    Prompt(ctx context.Context, tempFileName string) (string, error)
-}
 ```
 
-`run(ctx, bt Bluetoothctl, menu Menu)` accepts these interfaces, so tests inject
-a `fakeBluetoothctl` and exercise the full flow without touching real hardware
-or a display server. The real implementations shell out with
-`exec.CommandContext`.
+`listDevices`/`selectDevice` accept this interface, so tests inject a
+`fakeBluetoothctl` and exercise the real logic without touching real
+hardware. The real implementation shells out with `exec.CommandContext`.
 
 ## Data flow
 
 ```
+                 ROFI_RETV=0 (or unset)
 bluetoothctl "devices Connected" ─┐
-                                  ├─ parseDevices ─ mergeDevices ─ sortByConnected ─ writeRofiTempfile ─→ rofi
-bluetoothctl "devices" ───────────┘                                                                        │
-                                                                                                           ▼
-                                    connectDevice ←── resolveSelection ←──────────────────────────── user picks a line
+                                  ├─ gatherDevices ─ sortByConnected ─ formatScriptRow ─→ stdout ─→ rofi renders
+bluetoothctl "devices" ───────────┘
+
+                 ROFI_RETV=1, ROFI_INFO=<mac>
+bluetoothctl "devices Connected" ─┐
+                                  ├─ gatherDevices ─ lookup by mac ─→ connectDevice
+bluetoothctl "devices" ───────────┘
 ```
 
-- **parseDevices** turns each `Device <MAC> <name...>` line into a `Device`,
-  skipping anything that isn't a device line.
-- **mergeDevices** unions the connected and paired lists into a MAC-keyed map,
-  marking connected devices.
-- **writeRofiTempfile** renders `<symbol>: <MAC> <name>` lines to a temp file
-  that rofi reads via `-input`.
-- **resolveSelection** maps the picked line back to its `Device` by the MAC
-  embedded in it (`selectedMAC`), returning an error instead of panicking on a
-  malformed selection.
-- **connectDevice** powers the adapter on and issues `connect` or `disconnect`
-  based on the device's current state.
+- **gatherDevices** issues both `bluetoothctl` listings and merges them into
+  a MAC-keyed map — shared by both the list and select paths, so a select
+  call always toggles against live state rather than a snapshot from
+  whenever the list was drawn.
+- **formatScriptRow** renders `<symbol>: <MAC> <name>` plus the hidden
+  `\0info\x1f<MAC>` field.
+- **selectDevice** looks the picked MAC up directly in a fresh
+  `gatherDevices` map; an unrecognized MAC (e.g. the device vanished between
+  calls) is logged and treated as a no-op, not an error.
+- **connectDevice** powers the adapter on and issues `connect` or
+  `disconnect` based on the device's current state.
 
 ## Execution and error model
 
-- Each `bluetoothctl` invocation is bounded by a 30s context timeout. `rofi` is
-  cancellable but has no deadline, since the user may take arbitrarily long to
-  choose.
-- `run` returns an error only for genuine failures (temp file, `bluetoothctl`,
-  `rofi` launch); `Run` logs it and exits `1`. Normal outcomes — including the
-  user dismissing the menu (`ErrNoSelection`) or picking an unknown entry —
-  return `nil` and exit `0`.
-- All logging goes through `log/slog` to stderr; verbosity is set by
-  `-loglevel`.
+- Each `bluetoothctl` invocation is bounded by a 30s context timeout.
+- `Run` checks `ROFI_RETV` *before* touching the `flag` package at all.
+  On a real `ROFI_RETV=1` call, `argv[1]` is a Bluetooth device's display
+  name — adapter/peer-controlled text `flag.Parse` has no business seeing.
+  The flag surface (`-loglevel`, `-version`/`-v`) only exists on the
+  genuinely-manual, no-`ROFI_RETV` invocation path.
+- `listDevices`/`selectDevice` return an error only for genuine failures
+  (a `bluetoothctl` call failing); `Run`/`runScriptMode` log it via
+  `exitOnError` and exit `1`. An unresolved selection returns `nil` and
+  exits `0`, same as a normal toggle.
+- All logging goes through `log/slog` to stderr. Verbosity is `-loglevel` on
+  the manual path; script-mode invocations (exec'd by rofi, not a terminal)
+  use a fixed level.
 
 ## Testing
 
 - Pure logic (`parseDevices`, `mergeDevices`, `sortByConnected`,
-  `writeRofiTempfile`, `selectedMAC`, `resolveSelection`) is covered by
-  table-driven unit tests.
-- `TestSelectionIssuesConnectCommand` is a characterization test that pins the
-  exact `bluetoothctl` commands a given menu selection produces.
-- `controller.go` / `menu.go` implementations are tested against hermetic stub
-  scripts placed on `PATH`, so no real `bluetoothctl`/`rofi` is needed.
+  `gatherDevices`, `formatScriptRow`) is covered by table-driven unit tests;
+  `formatScriptRow`'s tests assert the exact wire bytes rofi parses.
+- `listDevices`/`selectDevice` are tested directly against a
+  `fakeBluetoothctl`, including the same connect/disconnect
+  characterization the old menu-selection flow used to pin.
+- `controller.go`'s `bluetoothctlRunner` is tested against a hermetic stub
+  script on `PATH`, so no real `bluetoothctl` is needed. There's no
+  equivalent rofi-stub test anymore — Go never invokes rofi, so there's
+  nothing to stub; the actual rofi round-trip is verified manually
+  (`rofi -show bluetooth -modi "bluetooth:<path>"`), not by the test suite.

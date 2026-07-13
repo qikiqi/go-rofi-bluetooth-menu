@@ -58,34 +58,6 @@ func TestRunBluetoothctl_MissingBinary(t *testing.T) {
 	}
 }
 
-func TestRunRofi(t *testing.T) {
-	dir := t.TempDir()
-	argsFile := filepath.Join(dir, "args.txt")
-	script := fmt.Sprintf(`echo "$@" > %q
-echo "selected line"`, argsFile)
-	if err := os.WriteFile(filepath.Join(dir, "rofi"), []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
-		t.Fatalf("os.WriteFile() error = %v", err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	tempFileName := filepath.Join(dir, "menu-input")
-	got, err := rofiMenu{}.Prompt(t.Context(), tempFileName)
-	if err != nil {
-		t.Fatalf("Prompt() error = %v", err)
-	}
-	if got != "selected line" {
-		t.Errorf("Prompt() = %q, want %q", got, "selected line")
-	}
-
-	args, err := os.ReadFile(argsFile)
-	if err != nil {
-		t.Fatalf("os.ReadFile(args) error = %v", err)
-	}
-	if !strings.Contains(string(args), tempFileName) {
-		t.Errorf("rofi invoked with args %q, want them to contain the tempfile name %q", args, tempFileName)
-	}
-}
-
 func TestConnectDevice(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "invocations.log")
