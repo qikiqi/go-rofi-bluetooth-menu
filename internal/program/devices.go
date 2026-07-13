@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -68,8 +68,15 @@ func sortByConnected(devices map[string]Device) []Device {
 	for _, d := range devices {
 		list = append(list, d)
 	}
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].Connected && !list[j].Connected
+	slices.SortFunc(list, func(a, b Device) int {
+		switch {
+		case a.Connected == b.Connected:
+			return 0
+		case a.Connected:
+			return -1
+		default:
+			return 1
+		}
 	})
 	return list
 }
