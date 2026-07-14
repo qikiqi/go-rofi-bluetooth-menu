@@ -1,16 +1,18 @@
 name: Matrix Build Go Binaries
 on:
   workflow_call:
+permissions:
+  contents: write
 jobs:
   build-go:
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         include:
-          - { name: go-rofi-bluetooth-menu, runner: ubuntu-latest, os: linux,   arch: amd64, env:  CGO_ENABLED=0 }
+          - { name: go-rofi-bluetooth-menu, runner: ubuntu-latest, os: linux, arch: amd64 }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
       - name: Build

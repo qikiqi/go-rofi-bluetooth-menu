@@ -11,5 +11,6 @@ func symbol(status bool) string {
 	if status {
 		return "󰂱"
 	}
+
 	return "󰂲"
 }

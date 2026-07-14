@@ -1,6 +1,9 @@
+// Package version prints build/version information derived from the
+// binary's embedded debug.BuildInfo.
 package version
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +16,7 @@ import (
 func Print() error {
 	buildInfo, ok := debug.ReadBuildInfo()
 	if !ok {
-		return fmt.Errorf("no build info available")
+		return errors.New("no build info available")
 	}
 
 	// Module version, e.g. "v1.2.3" or "v0.0.0-20250806123456-abcd1234".
@@ -23,6 +26,7 @@ func Print() error {
 
 	revision := "unknown"
 	buildTime := "unknown"
+
 	for _, s := range buildInfo.Settings {
 		switch s.Key {
 		case "vcs.revision":
@@ -41,5 +45,6 @@ func Print() error {
 		"%s version %s (built with %s, commit %s on %s)\n",
 		prog, version, goVersion, revision, buildTime,
 	)
+
 	return nil
 }

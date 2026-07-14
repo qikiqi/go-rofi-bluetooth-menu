@@ -1,3 +1,5 @@
+// Package program implements the rofi bluetooth device menu: listing,
+// selecting, and toggling bluetoothctl-managed devices.
 package program
 
 import (
@@ -32,10 +34,12 @@ func (bluetoothctlRunner) Run(ctx context.Context, command string) (string, erro
 
 	cmd := exec.CommandContext(ctx, "bluetoothctl")
 	cmd.Stdin = strings.NewReader(command + "\n")
+
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("bluetoothctl %q: %w", command, err)
 	}
+
 	return string(out), nil
 }
 
@@ -45,12 +49,15 @@ func connectDevice(ctx context.Context, bt Bluetoothctl, device Device) error {
 	if _, err := bt.Run(ctx, "power on"); err != nil {
 		return err
 	}
+
 	action := "connect"
 	if device.Connected {
 		action = "disconnect"
 	}
+
 	if _, err := bt.Run(ctx, action+" "+device.MAC); err != nil {
 		return err
 	}
+
 	return nil
 }

@@ -46,6 +46,7 @@ func Run(ctx context.Context) {
 		slog.Error("invalid log level", "err", err)
 		os.Exit(1)
 	}
+
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
 	if *versionFlag || *vFlag {
@@ -53,6 +54,7 @@ func Run(ctx context.Context) {
 			slog.Error("version unavailable", "err", err)
 			os.Exit(1)
 		}
+
 		return
 	}
 
@@ -93,14 +95,17 @@ func listDevices(ctx context.Context, bt Bluetoothctl, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+
 	if _, err := fmt.Fprintln(w, rofiNoCustomHeader); err != nil {
 		return err
 	}
+
 	for _, d := range sortByConnected(devices) {
 		if _, err := fmt.Fprintln(w, formatScriptRow(d)); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -113,14 +118,17 @@ func selectDevice(ctx context.Context, bt Bluetoothctl, mac string) error {
 	if err != nil {
 		return err
 	}
+
 	device, ok := devices[mac]
 	if !ok {
 		slog.Warn("could not resolve selection", "mac", mac)
 		return nil
 	}
+
 	if err := connectDevice(ctx, bt, device); err != nil {
 		return fmt.Errorf("toggle %s: %w", device.MAC, err)
 	}
+
 	return nil
 }
 
